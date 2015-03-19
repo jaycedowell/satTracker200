@@ -895,7 +895,15 @@ def main(args):
 		## Convert to EarthSatellitePlus instances
 		for i in xrange(len(data)/3):
 			sat = EarthSatellitePlus()
-			sat.fillFromPyEphem( ephem.readtle(data[3*i+0], data[3*i+1], data[3*i+2]) )
+			try:
+				sat.fillFromPyEphem( ephem.readtle(data[3*i+0], data[3*i+1], data[3*i+2]) )
+			except ValueError:
+				print "ERROR: Cannot parse TLE:"
+				print "  %s" % data[3*i+0].rstrip()
+				print "  %s" % data[3*i+1].rstrip()
+				print "  %s" % data[3*i+2].rstrip()
+				print "-> skipping"
+				continue
 			satellites.append( sat )
 			
 	# Load in the standard magnitude if we happen to have a qs.mag file to read
@@ -923,7 +931,8 @@ def main(args):
 			except KeyError:
 				pass
 		fh.close()
-	except IOError:
+	except IOError as e:
+		print "ERROR: Error reading 'qs.mag': %s" % str(e)
 		pass
 		
 	# Report on what we found
