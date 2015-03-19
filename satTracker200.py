@@ -98,12 +98,12 @@ def parseOptions(args):
 	config['baud'] = cFile.get('LX200', 'baudrate')
 	## Tracking parameters
 	config['updateInterval'] = cFile.getfloat('Tracking', 'updateInterval')
-	config['trackOffsetStep'] = cFile.getfloat('Tracking', 'trackOffsetStep')
-	config['prepOffsetStep'] = cFile.getfloat('Tracking', 'perpOffsetStep')
+	config['trackOffsetStep'] = abs( cFile.getfloat('Tracking', 'trackOffsetStep') )
+	config['perpOffsetStep'] = abs( cFile.getfloat('Tracking', 'perpOffsetStep') )
 	## Convert the trackOffsetStep from a float to a timedelta instance
 	s = int(config['trackOffsetStep'])
-	m = int((s-config['trackOffsetStep'])*1e6)
-	config['trackOffsetStep'] = timedelta(seconds=s, microseconds=m)
+	u = int((config['trackOffsetStep']-s)*1e6)
+	config['trackOffsetStep'] = timedelta(seconds=s, microseconds=u)
 	
 	# Validate
 	if len(config['args']) == 0:
@@ -587,9 +587,9 @@ def passPredictor(observer, satellites, date=None, time=None, utcOffset=0.0, dur
 		dt = datetime.utcnow()
 		oG = -1 if utcOffset < 0 else 1
 		oS = abs(utcOffset*3600.0)
-		oM = int((oS-int(oS))*1e6)
+		oU = int((oS-int(oS))*1e6)
 		oS = int(oS)
-		dt += oG*timedelta(seconds=oS, microseconds=oM)
+		dt += oG*timedelta(seconds=oS, microseconds=oU)
 	else:
 		## Input date/time
 		dt = datetime.strptime("%s %s" % (date, time), "%Y/%m/%d %H:%M:%S")
@@ -999,9 +999,9 @@ def main(args):
 			dt = datetime.utcnow()
 			oG = -1 if config['utcOffset'] < 0 else 1
 			oS = abs(config['utcOffset']*3600.0)
-			oM = int((oS-int(oS))*1e6)
+			oU = int((oS-int(oS))*1e6)
 			oS = int(oS)
-			dt += oG*timedelta(seconds=oS, microseconds=oM)
+			dt += oG*timedelta(seconds=oS, microseconds=oU)
 			dt = dt.strftime("%Y/%m/%d %H:%M:%S")
 		else:
 			## Use the provided date and time
@@ -1029,9 +1029,9 @@ def main(args):
 		# can use to update the clock
 		oG = -1 if config['utcOffset'] < 0 else 1
 		oS = abs(config['utcOffset']*3600.0)
-		oM = int((oS-int(oS))*1e6)
+		oU = int((oS-int(oS))*1e6)
 		oS = int(oS)
-		utcOffset = oG*timedelta(seconds=oS, microseconds=oM)
+		utcOffset = oG*timedelta(seconds=oS, microseconds=oU)
 		
 		# Start the tracking thread
 		trkr = SatellitePositionTracker(obs, satellites, interval=config['updateInterval'], lx200=tel)
