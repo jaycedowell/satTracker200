@@ -1,0 +1,46 @@
+#######################################
+#                                     #
+# satTracker200.py Configuration File #
+#                                     #
+#######################################
+
+# This section contains the location of the observer.  These values are used
+# if no telescope is connected or if information is missing from the 
+# telescope, i.e., the elevation of the observer.
+[Site]
+## latitude - The latitude of the observer in decimal degrees.
+##            North is positive.
+latitude: 30.00
+## longitude - The longitude of the observer in decimal degrees.
+##             East is positive.
+longitude: -100.00
+## elevation - The elevation of the observer above sea level 
+##             in meters.
+elevation: 300.0
+## utcOffset - The local time offset from UTC for the observer in
+##             decimal hours.
+utcOffset: 0.0
+
+
+# This section contains the information needed to connect.
+# to a LX200 classic over RS-232
+[LX200]
+## port - Device to use for communicating with the telescope.  All valid
+##        PySerial device names are supported.
+port: /dev/ttyUSB0
+## baudrate - Baud rate to use for the RS-232 link.  The valid values
+##            are: 1200, 2400, 4800, 9600, 14400, 19200, 28800,
+##                 38400, and 56700.
+baudrate: 9600
+
+
+# This section contains in the information needed to track using.
+[Tracking]
+## updateInterval - Update interval of the satellite position in seconds.
+updateInterval: 0.010
+## trackOffsetStep - Step size in seconds for centering a satellite being
+##                   tracked along the track path
+trackOffsetStep: 0.1
+## perpOffsetStep - Step size in degrees for centering a satellite being
+##                  tracked perpendicular to the path of the track
+perpOffsetStep: 0.1
