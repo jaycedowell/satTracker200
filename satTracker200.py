@@ -19,7 +19,7 @@ def usage(exitCode=None):
 	print """satTracker200.py - Satellite predictor/tracker for the LX200 classic 
 telescope.
 
-Usage: satTracker200.py [OPTIONS] tle_file [tle_file [...]]
+Usage: satTracker200.py [OPTIONS] tle_file|download [tle_file [...]]
 
 Options:
 -h, --help           Display this help message
@@ -34,6 +34,11 @@ Options:
                      predictions for (default = 180)
 -m, --mag-limit      In predictor mode, filters the event list of passes
                      brighter thant the provided limit (default = no limit)
+                     
+Note:  If the first argument to the command is "download", the script will
+       connect to the CelesTrak website and download the latest versions of
+       the 'visual.txt' and 'science.txt' TLEs to the current directory and
+       parse those.
 """
 	
 	if exitCode is not None:
@@ -607,8 +612,19 @@ def passPredictor(observer, satellites, date=None, time=None, utcOffset=0.0, dur
 		## Run until we are outside of the window to search
 		while (observer.date-tStart) <= (duration/60.0/24.0):
 			### Compute the next pass
-			rTime, rAz, mTime, mEl, sTime, sAz = observer.next_pass(sat)
-			
+			try:
+				rTime, rAz, mTime, mEl, sTime, sAz = observer.next_pass(sat)
+			except ValueError:
+				#### If this satellite is circumpolar, set some dummy values
+				rTime, rAz = observer.date, ephem.degrees('0:00:00')
+				mTime, mEl = observer.date+duration/2.0/60.0/24.0, ephem.degrees('1:00:00')
+				sTime, sAz = observer.date+duration/60.0/24.0, ephem.degrees('0:00:00')
+				
+			### Does the satellite actually rise?
+			if rTime is None or mTime is None or sTime is None:
+				observer.date += 2*duration/60.0/24.0
+				continue
+				
 			### Make sure that this pass is valid
 			visible = False
 			maxBright = 15.0
