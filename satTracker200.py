@@ -609,8 +609,10 @@ def passPredictor(observer, satellites, date=None, time=None, utcOffset=0.0, dur
 		## Reset the start time
 		observer.date = tStart
 		
-		## Run until we are outside of the window to search
-		while (observer.date-tStart) <= (duration/60.0/24.0):
+		## Run until we are outside of the window to search (or until it looks
+		## like we got stuck)
+		j = 0
+		while (observer.date-tStart) <= (duration/60.0/24.0) and j < 100:
 			### Compute the next pass
 			try:
 				rTime, rAz, mTime, mEl, sTime, sAz = observer.next_pass(sat)
@@ -624,6 +626,13 @@ def passPredictor(observer, satellites, date=None, time=None, utcOffset=0.0, dur
 			if rTime is None or mTime is None or sTime is None:
 				observer.date += 2*duration/60.0/24.0
 				continue
+				
+			### Does the rise time make sense?  This cases is needed to deal 
+			### with a problem in PyEphem where the rise time is strange if 
+			### satellite is already above the horizon at the current time
+			if rTime > mTime and observer.date == tStart:
+				observer.date -= 15/60.0/24.0
+				rTime, rAz, junk1, junk2, junk3, junk4 = observer.next_pass(sat)
 				
 			### Make sure that this pass is valid
 			visible = False
@@ -649,6 +658,7 @@ def passPredictor(observer, satellites, date=None, time=None, utcOffset=0.0, dur
 				
 			### Step forward in time to look for the next pass
 			observer.date = sTime + 5/60.0/24.0
+			j += 1
 			
 	# Sort the passes by rise time
 	events.sort(key=lambda x: x[2])
@@ -837,7 +847,7 @@ class SatellitePositionTracker(object):
 							dec = dec*180/math.pi
 							
 							#### Command the telescope
-							self.lx200.moveToPosition(ra, dec, fast=True, background=True)
+							self.lx200.moveToPosition(ra, dec, background=True)
 							
 				else:
 					## If it is no longer visible, check and see if it is
