@@ -157,7 +157,7 @@ class LX200(object):
 	Minimal RS-232 interface to the LX200 classic telescope.
 	"""
 	
-	def __init__(self, device, baud=9600, timeout=1.0):
+	def __init__(self, device, baud=9600, timeout=None):
 		"""
 		Create the connection to the telescope given a device name.  
 		Optionally, set the baud rate and timeout for the connection.
@@ -191,7 +191,12 @@ class LX200(object):
 		self.baud = baud
 		
 		# Open the port
-		self.port = serial.Serial(self.device, baud, timeout=self.timeout)
+		self.port = serial.Serial(self.device, baud, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE,
+								stopbits=serial.STOPBITS_ONE, xonxoff=False, rtscts=False, dsrdtr=None,
+								timeout=self.timeout)
+								
+		self.port.flushInput()
+		self.port.flushOutput()
 		
 		# Make sure there is a telescope on the other end
 		self.port.write(chr(0x06))
@@ -440,7 +445,6 @@ class LX200(object):
 						dist = self._readString()
 						dist = sum([1 for c in dist if c != ' '])
 						while dist > 2:
-							time.sleep(0.001)
 							self.port.write('#:D#')
 							dist = self._readString()
 							dist = sum([1 for c in dist if c != ' '])
