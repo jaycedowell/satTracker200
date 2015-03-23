@@ -19,7 +19,7 @@ def usage(exitCode=None):
 	print """satTracker200.py - Satellite predictor/tracker for the LX200 classic 
 telescope.
 
-Usage: satTracker200.py [OPTIONS] tle_file|download [tle_file [...]]
+Usage: satTracker200.py [OPTIONS] tle_file [tle_file [...]]
 
 Options:
 -h, --help           Display this help message
@@ -986,25 +986,6 @@ def main(args):
 	# Grab the list of filenames to look for TLEs in
 	filenames = config['args']
 	
-	# Special case:  If the first filename in 'download', go to CelesTrak and
-	# download the latest
-	if filenames[0] == 'download':
-		filenames = []
-		
-		## Top ~100 brightest satellites
-		try:
-			urllib.urlretrieve("http://celestrak.com/NORAD/elements/visual.txt", "visual.txt")
-			filenames.append( 'visual.txt' )
-		except Exception as e:
-			print "ERROR: Download of 'visual.txt' failed: %s" % str(e)
-			
-		## Earth & space science satellites
-		try:
-			urllib.urlretrieve("http://celestrak.com/NORAD/elements/science.txt", "science.txt")
-			filenames.append( 'science.txt' )
-		except Exception as e:
-			print "ERROR: Download of 'science.txt' failed: %s" % str(e)
-			
 	# Read in the TLEs
 	satellites = []
 	for filename in filenames:
