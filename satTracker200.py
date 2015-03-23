@@ -191,10 +191,11 @@ class LX200(object):
 		self.baud = baud
 		
 		# Open the port
-		self.port = serial.Serial(self.device, baud, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE,
+		self.port = serial.Serial(self.device, baudrate=baud, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE,
 								stopbits=serial.STOPBITS_ONE, xonxoff=False, rtscts=False, dsrdtr=None,
 								timeout=self.timeout)
 								
+		# Clear it out
 		self.port.flushInput()
 		self.port.flushOutput()
 		
@@ -239,14 +240,14 @@ class LX200(object):
 			
 		return value
 		
-	def _str2coord(self, data, forceLow=False):
+	def _str2coord(self, data, forceLow=False, forceHigh=False):
 		"""
 		Internal function to take a coordinate string (either low or high
 		precision) and convert it to a HH.HHHHHH or sDD.DDDDDD value.
 		"""
 		
 		data = data.replace(chr(223), ':')
-		if self.highPrecision and not forceLow:
+		if (self.highPrecision and not forceLow) or forceHigh:
 			d, m, s = data.split(':', 2)
 			d, m, s = int(d), int(m), int(s)
 			value = abs(d) + m/60. + s/3600.
@@ -381,25 +382,73 @@ class LX200(object):
 		return obs
 		
 	def setHighPrecision(self):
+		"""
+		Set the coordinate format to high precision mode (HH:MM:SS or 
+		sDD:MM:SS).
+		"""
+		
+		# Are we already there?
 		if not self.highPrecision:
 			self.port.write('#:U#')
 			self.highPrecision = True
 			
 	def setLowPrecision(self):
+		"""
+		Set the coordinate format to low precision mode (default; HH:MM.M
+		or sDD:MM).
+		"""
+		
+		# Are the already there?
 		if self.highPrecision:
 			self.port.write('#:U#')
 			self.highPrecision = False
 			
-	def setSlewRateFast(self):
+	def setMaximumSlewRate(self, degPerSec):
+		"""
+		Set the maximum slew rate in degrees per second.  This is the speed
+		used in the "Slew" (fastest) mode.  Valid values are: 
+		  * 2, 
+		  * 3, 
+		  * 4, 
+		  * 5, 
+		  * 6, 
+		  * 7, and
+		  * 8.
+		"""
+		
+		# Validate the rate
+		if int(degPerSec) not in (2, 3, 4, 5, 6, 7, 8):
+			raise ValueError("Invalid slew rate: %i deg/s" % int(degPerSec))
+			
+		self.port.write('#:Sw%i#' % int(degPerSec))
+		return bool( self._readNumber() )
+		
+	def setSlewRateMax(self):
+		"""
+		Set the slew rate to "Slew" (fastest).
+		"""
+		
 		self.port.write('#:RS#')
 		
 	def setSlewRateFind(self):
+		"""
+		Set the slew rate to "Find" (second fastest).
+		"""
+		
 		self.port.write('#:RM#')
 		
 	def setSlewRateCenter(self):
+		"""
+		Set the slew rate to "Center" (second slowest).
+		"""
+		
 		self.port.write('#:RC#')
 		
 	def setSlewRateGuide(self):
+		"""
+		Set the slew rate to "Guide" (slowest).
+		"""
+		
 		self.port.write('#:RG#')
 		
 	def getCurrentPointing(self):
@@ -417,6 +466,58 @@ class LX200(object):
 		ra = self._str2coord(ra)
 		dec = self._str2coord(dec)
 		return ra, dec
+		
+	def getSiderealTime(self):
+		"""
+		Query the telescope for the current sidereal time and return it in
+		decimal hours.
+		"""
+		
+		self.port.write('#:GS#')
+		lst = self._readString()
+		
+		lst = self._str2coord(lst, forceHigh=True)
+		return lst
+		
+	def getElevationLimits(self):
+		"""
+		Get the current slew elevation limits, in degrees, and return them
+		as a two-element tuple of lower limit, upper limit.
+		"""
+		
+		self.port.write('#:Gh#')
+		ll = self._readString()
+		self.port.write('#:Go#')
+		ul = self._readString()
+		
+		ll = ll.replace(chr(223), '')
+		ll = int(ll)
+		ul = ul.replace(chr(223), '')
+		ul = int(ul)
+		
+		return ll, ul
+		
+	def setElevationLimits(self, lowerLimit, upperLimit):
+		"""
+		Set the telescope slew elevation limits.
+		"""
+		
+		# Validate
+		if lowerLimit < 0 or lowerLimit > 90:
+			raise ValueError("Invalid lower limit: %i" % int(lowerLimit))
+		if upperLimit < 0 or upperLimit > 90:
+			raise ValueError("Invalid upper limit: %i" % int(upperLimit))
+		if upperLimit <= lowerLimit:
+			raise ValueError("Invalid limits: %i to %i" % (int(lowerLimit), int(upperLimit)))
+			
+		# Set
+		status = True
+		self.port.write("#:Sh%02i%s#" % (int(lowerLimit), chr(223)))
+		status &= bool( self._readNumber() )
+		self.port.write("#:So%02i%s#" % (int(upperLimit), chr(223)))
+		status &= bool( self._readNumber() )
+		
+		return status
 		
 	def _moveToPosition(self, raStr, decStr, fast=False):
 		"""
@@ -448,6 +549,11 @@ class LX200(object):
 							self.port.write('#:D#')
 							dist = self._readString()
 							dist = sum([1 for c in dist if c != ' '])
+							
+			if fast:
+				self.port.flushInput()
+				self.port.flushOutput()
+				
 			self.lock.release()
 			
 		else:
@@ -977,8 +1083,9 @@ def main(args):
 		print "LX200 set to %s, computer at %s" % (tTime, cTime)
 		print "-> Difference is %s" % tcOffset
 		
-		# Set the slew rate
-		tel.setSlewRateFast()
+		# Set the slew rate to maximum
+		tel.setMaximumSlewRate(8)
+		tel.setSlewRateMax()
 		
 		# Set high precision coordinates
 		tel.setHighPrecision()
