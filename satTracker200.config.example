@@ -37,7 +37,7 @@ baudrate: 9600
 # This section contains in the information needed to track using.
 [Tracking]
 ## updateInterval - Update interval of the satellite position in seconds.
-updateInterval: 0.010
+updateInterval: 0.1
 ## trackOffsetStep - Step size in seconds for centering a satellite being
 ##                   tracked along the track path
 trackOffsetStep: 0.1
