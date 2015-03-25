@@ -9,8 +9,6 @@ import ephem
 import curses
 import getopt
 import serial
-import urllib
-import threading
 from datetime import datetime, timedelta
 from ConfigParser import SafeConfigParser
 
@@ -164,8 +162,8 @@ class LX200(object):
 		"""
 		
 		# Fixed parameters
-		self.device = device
-		self.timeout = timeout
+		self._device = device
+		self._timeout = timeout
 		
 		# Open the port
 		self._open(baud=9600)
@@ -176,10 +174,7 @@ class LX200(object):
 			
 		# The default state is for low-precision (HH:MM.M and sDD*MM) 
 		# coordinates
-		self.highPrecision = False
-		
-		# Semaphore for backgrounded moveToPosition() calls
-		self.lock = threading.Semaphore()
+		self._highPrecision = False
 		
 	def _open(self, baud=9600):
 		"""
@@ -188,12 +183,12 @@ class LX200(object):
 		"""
 		
 		# Save the baud rate in case a setBaudRate() is called
-		self.baud = baud
+		self._baud = baud
 		
 		# Open the port
-		self.port = serial.Serial(self.device, baudrate=baud, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE,
+		self.port = serial.Serial(self._device, baudrate=baud, bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE,
 								stopbits=serial.STOPBITS_ONE, xonxoff=False, rtscts=False, dsrdtr=None,
-								timeout=self.timeout)
+								timeout=self._timeout)
 								
 		# Clear it out
 		self.port.flushInput()
@@ -215,7 +210,7 @@ class LX200(object):
 			ra /= 15.0
 		ra %= 24.0
 		
-		if self.highPrecision:
+		if self._highPrecision:
 			raH, raM, raS = int(ra), int(ra*60)%60, int(ra*3600)%60
 			value = "%02i:%02i:%02i" % (raH, raM, raS)
 		else:
@@ -231,7 +226,7 @@ class LX200(object):
 		"""
 		
 		decG = '-' if dec < 0 else '+'
-		if self.highPrecision:
+		if self._highPrecision:
 			decD, decM, decS = int(abs(dec)), int(abs(dec)*60)%60, int(abs(dec)*3600)%60
 			value = "%s%02i%s%02i:%02i" % (decG, decD, chr(223), decM, decS)
 		else:
@@ -247,7 +242,7 @@ class LX200(object):
 		"""
 		
 		data = data.replace(chr(223), ':')
-		if (self.highPrecision and not forceLow) or forceHigh:
+		if (self._highPrecision and not forceLow) or forceHigh:
 			d, m, s = data.split(':', 2)
 			d, m, s = int(d), int(m), int(s)
 			value = abs(d) + m/60. + s/3600.
@@ -295,7 +290,7 @@ class LX200(object):
 			    14400: 5,  9600: 6,  4800: 7,  2400: 8, 
 			    1200: 9}
 			    
-		if baud == self.baud:
+		if baud == self._baud:
 			return True
 			
 		try:
@@ -388,9 +383,9 @@ class LX200(object):
 		"""
 		
 		# Are we already there?
-		if not self.highPrecision:
+		if not self._highPrecision:
 			self.port.write('#:U#')
-			self.highPrecision = True
+			self._highPrecision = True
 			
 	def setLowPrecision(self):
 		"""
@@ -399,9 +394,9 @@ class LX200(object):
 		"""
 		
 		# Are the already there?
-		if self.highPrecision:
+		if self._highPrecision:
 			self.port.write('#:U#')
-			self.highPrecision = False
+			self._highPrecision = False
 			
 	def setMaximumSlewRate(self, degPerSec):
 		"""
@@ -519,49 +514,51 @@ class LX200(object):
 		
 		return status
 		
+	def isSlewing(self):
+		"""
+		Return if the telescope is currently slewing to a target or not.
+		Returns True if it is, False otherwise.
+		"""
+		
+		self.port.write('#:D#')
+		dist = self._readString()
+		dist = sum([1 for c in dist if c == chr(255)])
+		if dist > 2:
+			return True
+		else:
+			return False
+			
 	def _moveToPosition(self, raStr, decStr, fast=False):
 		"""
 		Internal function to help with running moveToPosition() in the 
 		background.
 		"""
 		
-		if self.lock.acquire(False):
-			status = True
-			self.port.write('#:Sr%s#' % raStr)
-			if not fast:
-				status &= bool( self._readNumber() )
-			self.port.write('#:Sd%s#' % decStr)
-			if not fast:
-				status &= bool( self._readNumber() )
-				
-			if status:
-				self.port.write('#:MS#')
-				if not fast:
-					status &= not bool( self._readNumber() )
-				if not status:
-					msg = self._readString()
-				else:
-					if not fast:
-						self.port.write('#:D#')
-						dist = self._readString()
-						dist = sum([1 for c in dist if c != ' '])
-						while dist > 2:
-							self.port.write('#:D#')
-							dist = self._readString()
-							dist = sum([1 for c in dist if c != ' '])
-							
-			if fast:
-				self.port.flushInput()
-				self.port.flushOutput()
-				
-			self.lock.release()
+		# Set the RA/dec
+		status = True
+		self.port.write('#:Sr%s#' % raStr)
+		if not fast:
+			status &= bool( self._readNumber() )
+		self.port.write('#:Sd%s#' % decStr)
+		if not fast:
+			status &= bool( self._readNumber() )
 			
-		else:
-			status = False
+		# If that has worked, start the slew
+		if status:
+			self.port.write('#:MS#')
+			if not fast:
+				status &= not bool( self._readNumber() )
+			if not status:
+				msg = self._readString()
+				
+		# Flush the serial connection if we are in fast mode
+		if fast:
+			self.port.flushInput()
+			self.port.flushOutput()
 			
 		return status
 		
-	def moveToPosition(self, ra, dec, fast=False, background=False):
+	def moveToPosition(self, ra, dec, fast=False, blocking=True):
 		"""
 		Given a RA value in decimal hours and a declination value in 
 		decimal degrees, slew the telescope there provided that it is
@@ -569,23 +566,30 @@ class LX200(object):
 		move was initiated, False otherwise.
 		
 		There are two keywords that control how this functions behaves:
-		'fast' and 'background'.  Setting 'fast' to True disables the 
+		'fast' and 'blocking'.  Setting 'fast' to True disables the 
 		on-line error detection in order to increase the command rate.
-		'background' causes the function to spawn a background thread
-		for the movement so that this function is non-blocking.
+		'blocking' causes the function to poll the telesocpe for motion
+		and waits until the current slew has finished before moving.
 		"""
 		
+		# Convert to a string
 		ra = self._ra2str(ra)
 		dec = self._dec2str(dec)
 		
-		if background:
-			t = threading.Thread(target=self._moveToPosition, args=(ra,dec), kwargs={'fast':fast})
-			t.start()
-			status = True
-			
-		else:
+		if blocking:
+			# Wait until we are ready to move again
+			while self.isSlewing():
+				time.sleep(0.05)
+				
+			# Move
 			status = self._moveToPosition(ra, dec, fast=fast)
-			
+		else:
+			if self.isSlewing():
+				status = False
+			else:
+				self.haltCurrentSlew()
+				status = self._moveToPosition(ra, dec, fast=fast)
+				
 		return status
 		
 	def haltCurrentSlew(self):
@@ -785,7 +789,7 @@ class SatellitePositionTracker(object):
 	Class for tracking an ensemble of satellites and using a telescope to see them.
 	"""
 	
-	def __init__(self, observer, satellites, interval=0.1, lx200=None):
+	def __init__(self, observer, satellites, lx200=None):
 		"""
 		Initialize the SatellitePositions instace using an ephem.Observer
 		instance, a list of ephem.EarthSatellite instances, and, optionally:
@@ -795,7 +799,7 @@ class SatellitePositionTracker(object):
 		
 		# Copy the observer and convert the list of ephem.EarthSatellite 
 		# instances to EarthSatellitePlus instances.  Also, save the
-		# interval and telescope information
+		# telescope information
 		self.observer = observer
 		self.satellites = []
 		for sat in satellites:
@@ -804,17 +808,12 @@ class SatellitePositionTracker(object):
 				newSat.fillFromPyEphem(sat)
 				sat = newSat
 			self.satellites.append( sat )
-		self.interval = float(interval)
 		self.lx200 = lx200
 		
 		# State variables for fine-tuning the telescope tracking
 		self.tracking = None
 		self.timeOffset = timedelta()
 		self.perpOffset = 0.0
-		
-		# Threading state variales
-		self.thread = None
-		self.alive = threading.Event()
 		
 	def updateObserver(self, observer):
 		"""
@@ -897,86 +896,57 @@ class SatellitePositionTracker(object):
 		
 		return self.tracking
 		
-	def start(self):
+	def update(self):
 		"""
-		Start the tracking background thread.
-		"""
-		
-		if self.thread is not None:
-			self.stop()
-			
-		self.thread = threading.Thread(target=self.trackSats, name='trackSats')
-		self.thread.setDaemon(1)
-		self.alive.set()
-		self.thread.start()
-		time.sleep(1)
-		
-	def stop(self):
-		"""
-		Stop the tracking background thread.
+		Computes the locations of all of the satellites provided and 
+		provides poitning information to the telescope for the satellite
+		being tracked.  Returns the number of seconds used.
 		"""
 		
-		if self.thread is not None:
-			self.alive.clear()
-			
-			self.thread.join()
-			self.thread = None
-			
-	def trackSats(self):
-		"""
-		Background thread function that computes the locations of all of 
-		the satellites provided and provides poitning information to the
-		telescope for the satellite being tracked.
-		"""
+		# Marker
+		tStart = time.time()
 		
-		while self.alive.isSet():
-			# Start and current times.  The current time is further adjusted
-			# by the 'timeOffset' attribute to help with tracking.
-			tStart = time.time()
-			tNow = datetime.utcnow() + self.timeOffset
+		# The current time is further adjusted by the 'timeOffset' attribute
+		# to help with tracking.
+		tNow = datetime.utcnow() + self.timeOffset
+		
+		# Update the observer with the current time
+		self.observer.date = tNow.strftime("%Y/%m/%d %H:%M:%S.%f")
+		
+		# Loop through the satellites and update them
+		for sat in self.satellites:
+			sat.compute(self.observer)
 			
-			# Update the observer with the current time
-			self.observer.date = tNow.strftime("%Y/%m/%d %H:%M:%S.%f")
-			
-			# Loop through the satellites and update them
-			for sat in self.satellites:
-				sat.compute(self.observer)
-				
-				if sat.alt > 0:
-					## If the satellie is up, check and see if it is 
-					## the one that we should be tracking.
-					if sat.catalog_number == self.tracking:
-						### Is there a telescope to use?
-						if self.lx200 is not None:
-							#### Apply a perpendicular correction to the
-							#### track to help with tracking
-							ra, dec = getPointFromBearing(sat.ra, sat.dec, sat.bearing+math.pi/2, self.perpOffset)
-							
-							#### Radians -> hours/degrees
-							ra = ra*12/math.pi
-							dec = dec*180/math.pi
-							
-							#### Command the telescope
-							self.lx200.moveToPosition(ra, dec, background=True)
-							
-				else:
-					## If it is no longer visible, check and see if it is
-					## the satellite that we were tracking so that we can
-					## stop.
-					if sat.catalog_number == self.tracking:
-						self.tracking = None
+			if sat.alt > 0:
+				## If the satellie is up, check and see if it is 
+				## the one that we should be tracking.
+				if sat.catalog_number == self.tracking:
+					### Is there a telescope to use?
+					if self.lx200 is not None:
+						#### Apply a perpendicular correction to the
+						#### track to help with tracking
+						ra, dec = getPointFromBearing(sat.ra, sat.dec, sat.bearing+math.pi/2, self.perpOffset)
 						
-			# Final time to figure out how much time we spent calculating 
-			# positions and how long we need to sleep to get ready for the
-			# next iteration
-			tStop = time.time()
-			sleepCount = 0.0
-			sleepTime = self.interval - (tStop - tStart)
-			
-			# Sleep in 10 ms increments
-			while self.alive.isSet() and sleepCount < sleepTime:
-				time.sleep(0.01)
-				sleepCount += 0.01
+						#### Radians -> hours/degrees
+						ra = ra*12/math.pi
+						dec = dec*180/math.pi
+						
+						#### Command the telescope
+						self.lx200.moveToPosition(ra, dec, blocking=False)
+						
+			else:
+				## If it is no longer visible, check and see if it is
+				## the satellite that we were tracking so that we can
+				## stop.
+				if sat.catalog_number == self.tracking:
+					self.stopTracking()
+					
+		# Final time to figure out how much time we spent calculating 
+		# positions.
+		tStop = time.time()
+		
+		# Done
+		return tStop-tStart
 
 
 def main(args):
@@ -1135,9 +1105,8 @@ def main(args):
 		oS = int(oS)
 		utcOffset = oG*timedelta(seconds=oS, microseconds=oU)
 		
-		# Start the tracking thread
-		trkr = SatellitePositionTracker(obs, satellites, interval=config['updateInterval'], lx200=tel)
-		trkr.start()
+		# Initialize the tracker
+		trkr = SatellitePositionTracker(obs, satellites, lx200=tel)
 		
 		# Setup the TUI
 		stdscr = curses.initscr()
@@ -1163,6 +1132,9 @@ def main(args):
 			## Current time
 			tNow = datetime.utcnow()
 			tNowLocal = tNow + utcOffset
+			
+			## Update the tracker
+			tElapsed = trkr.update()
 			
 			## Figure out how many satellites are currently visible and brighter
 			## than the current magntiude limit
@@ -1302,7 +1274,9 @@ def main(args):
 			output = "  UTC: "
 			output += tNow.strftime("%Y/%m/%d %H:%M:%S")
 			output += ".%01i" % (float(tNow.strftime("%f"))/1e5,)
-			output += "                         "
+			output += "         "
+			output += "%5.3f s" % tElapsed
+			output += "         "
 			output += "LT: "
 			output += tNowLocal.strftime("%Y/%m/%d %H:%M:%S")
 			output += ".%01i" % (float(tNowLocal.strftime("%f"))/1e5,)
@@ -1328,16 +1302,14 @@ def main(args):
 				
 			## Display and sleep until the next iteration
 			stdscr.refresh()
-			time.sleep(0.1)
+			tSleep = config['updateInterval'] - tElapsed
+			time.sleep( max([tSleep, 0.001]) )
 			
 		# Close out the curses session
 		curses.nocbreak()
 		stdscr.keypad(0)
 		curses.echo()
 		curses.endwin()
-		
-		# Stop the tracking thread
-		trkr.stop()
 
 
 if __name__ == "__main__":
