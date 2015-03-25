@@ -582,6 +582,7 @@ class LX200(object):
 				time.sleep(0.05)
 				
 			# Move
+			self.halfCurrentSlew()
 			status = self._moveToPosition(ra, dec, fast=fast)
 		else:
 			if self.isSlewing():
