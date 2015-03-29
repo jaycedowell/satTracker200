@@ -17,7 +17,7 @@ Options:
 -h, --help           Display this help message
 -f, --force          Force re-downloading the TLEs
 -a, --age            Age limit in days for refreshing a file 
-                     (default = 4 days)
+                     (default = 2 days)
 """
 	
 	if exitCode is not None:
@@ -29,7 +29,7 @@ Options:
 def parseOptions(args):
 	config = {}
 	config['force'] = False
-	config['age'] = 4*86400
+	config['age'] = 2*86400.
 	
 	try:
 		opts, args = getopt.getopt(args, "hfa:", ["help", "force", "age="])
@@ -63,7 +63,7 @@ def main(args):
 	
 	# Figure out what do to
 	toRefresh = []
-	for filename in ('visual.txt', 'science.txt'):
+	for filename in ('visual.txt', 'science.txt', 'resource.txt'):
 		if os.path.exists(filename):
 			## Get the age of the file
 			mtime = os.stat(filename)[7]
