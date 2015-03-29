@@ -599,6 +599,8 @@ class LX200(object):
 		"""
 		
 		self.port.write('#:Q#')
+		for d in ('n', 's', 'e', 'w'):
+			self.port.write('#:Q%s#' % d)
 
 
 class EarthSatellitePlus(ephem.EarthSatellite):
