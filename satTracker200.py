@@ -635,6 +635,10 @@ class EarthSatellitePlus(ephem.EarthSatellite):
 	_sol = ephem.Sun()
 	magnitude = 99.0
 	
+	# Signal loss information
+	_nextSet = None
+	los = 0.0
+	
 	def compute(self, observer):
 		"""
 		Wrapper around ephem.EarthSatellite.compute() function that 
@@ -668,6 +672,21 @@ class EarthSatellitePlus(ephem.EarthSatellite):
 		except (ValueError, TypeError):
 			self.bearing = 0.0
 			
+		## Calculate how long before we expect to lose the satellite
+		if self.alt > 0:
+			if self._nextSet is None:
+				try:
+					event = observer.next_pass(self)
+					self._nextSet = event[4]
+				except ValueError:
+					self._nextSet = observer.date + 1.0
+					
+			self.los = (self._nextSet-observer.date)*86400.0
+			
+		else:
+			self._nextSet = None
+			self.los = 0.0
+		
 	def setStdMag(self, stdMag):
 		"""
 		Set the "standard magnitude" for this satellite to use for 
@@ -802,12 +821,13 @@ class SatellitePositionTracker(object):
 	Class for tracking an ensemble of satellites and using a telescope to see them.
 	"""
 	
-	def __init__(self, observer, satellites, lx200=None):
+	def __init__(self, observer, satellites, telescope=None):
 		"""
 		Initialize the SatellitePositions instance using an ephem.Observer
 		instance, a list of ephem.EarthSatellite instances, and, optionally:
 		  * An update interval in seconds using the 'interval' keyword and
-		  * A LX200 instance for tracking using the 'lx200' keyword.
+		  * An LX200-like telescope instance for tracking using the 
+		    'telescope' keyword.
 		"""
 		
 		# Copy the observer and convert the list of ephem.EarthSatellite 
@@ -821,14 +841,28 @@ class SatellitePositionTracker(object):
 				newSat.fillFromPyEphem(sat)
 				sat = newSat
 			self.satellites.append( sat )
-		self.lx200 = lx200
+		self.telescope = telescope
+		
+		# State variables for progressive updates to keep down the execution
+		# time of update()
+		self.nTiers = 4
+		self.currentTier = 0
+		self.tiers = [i % self.nTiers for i in xrange(len(self.satellites))]
 		
 		# State variables for fine-tuning the telescope tracking
 		self.tracking = None
 		self.timeOffset = timedelta()
 		self.crossTrackOffset = 0.0
 		
-	def updateObserver(self, observer):
+	def getObserver(self):
+		"""
+		Return a copy of the ephem.Observer instance being used for 
+		computation.
+		"""
+		
+		return copy.copy(self.observer)
+		
+	def setObserver(self, observer):
 		"""
 		Change the location of the observer using an ephem.Observer
 		instance.  If the background tracking thread is running is
@@ -837,10 +871,6 @@ class SatellitePositionTracker(object):
 		
 		self.observer = copy.copy(observer)
 		
-		if self.thread is not None:
-			self.stop()
-			self.start()
-			
 	def setTimeOffset(self, seconds):
 		"""
 		Set the tracking time offset to using a timedelta instance.
@@ -898,8 +928,8 @@ class SatellitePositionTracker(object):
 		"""
 		
 		self.tracking = None
-		if self.lx200 is not None:
-			self.lx200.haltCurrentSlew()
+		if self.telescope is not None:
+			self.telescope.haltCurrentSlew()
 			
 	def getTracking(self):
 		"""
@@ -914,8 +944,8 @@ class SatellitePositionTracker(object):
 		Reset the telescope target information to clear tracking problems.
 		"""
 		
-		if self.lx200 is not None:
-			self.lx200.resetTarget()
+		if self.telescope is not None:
+			self.telescope.resetTarget()
 			
 	def getNumberVisible(self, magnitudeCut=None):
 		"""
@@ -930,11 +960,13 @@ class SatellitePositionTracker(object):
 		nVis = sum( [1 for sat in self.satellites if sat.alt > 0 and sat.magnitude <= magnitudeCut] )
 		return nVis
 		
-	def update(self):
+	def update(self, full=False):
 		"""
-		Computes the locations of all of the satellites provided and 
-		provides pointing information to the telescope for the satellite
-		being tracked.  Returns the number of seconds used.
+		Computes the locations of all satellites in the current computation
+		tier and provides pointing information to the telescope for the 
+		satellite being tracked.  Returns the number of seconds used.
+		
+		.. note:: If a full upate is required, set the 'full' keyword to True.
 		"""
 		
 		# Marker
@@ -948,7 +980,11 @@ class SatellitePositionTracker(object):
 		self.observer.date = tNow.strftime("%Y/%m/%d %H:%M:%S.%f")
 		
 		# Loop through the satellites and update them
-		for sat in self.satellites:
+		for tier,sat in zip(self.tiers, self.satellites):
+			if not full:
+				if tier != self.currentTier and sat.catalog_number != self.tracking:
+					continue
+					
 			sat.compute(self.observer)
 			
 			if sat.alt > 0:
@@ -956,7 +992,7 @@ class SatellitePositionTracker(object):
 				## the one that we should be tracking.
 				if sat.catalog_number == self.tracking:
 					### Is there a telescope to use?
-					if self.lx200 is not None:
+					if self.telescope is not None:
 						#### Apply a perpendicular correction to the
 						#### track to help with tracking
 						ra, dec = getPointFromBearing(sat.ra, sat.dec, sat.bearing+math.pi/2, self.crossTrackOffset)
@@ -966,7 +1002,7 @@ class SatellitePositionTracker(object):
 						dec = dec*_rad2deg
 						
 						#### Command the telescope
-						self.lx200.moveToPosition(ra, dec, blocking=False)
+						self.telescope.moveToPosition(ra, dec, blocking=False)
 						
 			else:
 				## If it is no longer visible, check and see if it is
@@ -978,6 +1014,9 @@ class SatellitePositionTracker(object):
 		# Final time to figure out how much time we spent calculating 
 		# positions.
 		tStop = time.time()
+		
+		# Update the tier being computed
+		self.currentTier = (self.currentTier + 1) % self.nTiers
 		
 		# Done
 		return tStop-tStart
@@ -1066,40 +1105,40 @@ def main(args):
 	# Try and setup the telescope.  This not only opens up the port but also
 	# makes sure that the time is right.
 	try:
-		tel = LX200(config['port'], baud=config['baud'])
+		lx200 = LX200(config['port'], baud=config['baud'])
 		
 		## Make sure that the time is "reasonable"
-		tTime = tel.getDateTime()
+		tTime = lx200.getDateTime()
 		cTime = datetime.utcnow()
 		tcOffset = cTime - tTime
 		
 		if abs(tcOffset) > timedelta(seconds=10):
-			tel.setDateTime(cTime)
+			lx200.setDateTime(cTime)
 			
-			tTime = tel.getDateTime()
+			tTime = lx200.getDateTime()
 			cTime = datetime.utcnow()
 			tcOffset = cTime - tTime
 			
 		print "LX200 set to %s, computer at %s" % (tTime, cTime)
 		print "-> Difference is %s" % tcOffset
-		telStatusString = "LX200 set to %s, computer at %s" % (tTime, cTime)
+		lx200StatusString = "LX200 set to %s, computer at %s" % (tTime, cTime)
 		
 		# Set the slew rate to maximum
-		tel.setMaximumSlewRate(8)
-		tel.setSlewRateMax()
+		lx200.setMaximumSlewRate(8)
+		lx200.setSlewRateMax()
 		
 		# Set high precision coordinates
-		tel.setHighPrecision()
+		lx200.setHighPrecision()
 		
 	except Exception as e:
 		print "ERROR: %s" % str(e)
-		tel = None
-		telStatusString = 'Telescope not connected'
+		lx200 = None
+		lx200StatusString = 'Telescope not connected'
 		
 	# Set the observer according to the telescope, if found.  Otherwise, use
 	# the default values.
 	try:
-		obs = tel.getObserver(elevation=config['elev'])
+		obs = lx200.getObserver(elevation=config['elev'])
 	except Exception as e:
 		print "ERROR: %s" % str(e)
 		obs = ephem.Observer()
@@ -1160,8 +1199,9 @@ def main(args):
 		oS = int(oS)
 		utcOffset = oG*timedelta(seconds=oS, microseconds=oU)
 		
-		# Initialize the tracker
-		trkr = SatellitePositionTracker(obs, satellites, lx200=tel)
+		# Initialize the tracker and run the first full update
+		trkr = SatellitePositionTracker(obs, satellites, telescope=lx200)
+		trkr.update(full=True)
 		
 		# Setup the TUI
 		stdscr = curses.initscr()
@@ -1172,13 +1212,14 @@ def main(args):
 		
 		# Main TUI loop
 		## State control variables and such
-		act = 0
-		trk = -1
-		magLimit = 6.0
-		msg = telStatusString
-		oldMsg = ''
-		msgCount = 0
-		empty = ''
+		act = 0					# Line number of the satellite the selector is on
+		trk = -1					# Line number of the satellite being tracked
+		info = -1					# Whether or not to get info about a satellite
+		magLimit = 6.0				# Magnitude limit for what to display
+		msg = lx200StatusString		# Message string
+		oldMsg = ''				# Message string - previous value (to help with clearing old messages)
+		msgCount = 0				# Message string display counter (to help with clearing old messages)
+		empty = ''				# Empty string (to help with clearing old messages/the window)
 		while len(empty) < (5+2+24+2+12+2+12+2+12+2+5):
 			empty += ' '
 			
@@ -1202,8 +1243,8 @@ def main(args):
 				### 'q' to exit the main loop after stopping the movement
 				if trkr.getTracking() is not None:
 					trkr.stopTracking()
-				if tel is not None:
-					tel.haltCurrentSlew()
+				if lx200 is not None:
+					lx200.haltCurrentSlew()
 				break
 			elif c == curses.KEY_UP:
 				### Up arrow to change what is selected
@@ -1282,9 +1323,12 @@ def main(args):
 				else:
 					trk = -1
 					trkChange = True
+			elif c == ord('i'):
+				### 'i' to get information about the currently selected satellite
+				info = act
 					
 			## Additional state check to make sure that we aren't still trying
-			## to track a satellite that has set
+			## to track a satellite that has set/been eclipsed
 			if not trkChange:
 				if trk != -1 and trkr.getTracking() is None:
 					trk = -1
@@ -1294,6 +1338,13 @@ def main(args):
 			output = "%5s  %24s  %12s  %12s  %12s  %5s\n" % ('ID', 'Name', 'Azimuth', 'Elevation', 'Status', 'Mag.')
 			stdscr.addstr(0, 0, output, curses.A_UNDERLINE)
 			
+			## Have we stopped a track?  If so, let the user know.
+			if trkChange:
+				if trk == -1:
+					trkr.stopTracking()
+					msg = 'Tracking stopped'
+					trkChange = False
+					
 			## Satellite information
 			k = 0
 			for j in xrange(nSats):
@@ -1312,12 +1363,22 @@ def main(args):
 								trkr.setTimeOffset( timedelta() )
 								trkr.setCrossTrackOffset( 0.0 )
 								trkr.startTracking(sat.catalog_number)
-								msg = 'Now tracking NORAD ID #%i' % sat.catalog_number
+								msg = 'Now tracking \'%s\' (NORAD ID #%i)' % (sat.name, sat.catalog_number)
 								
-						elif trk == -1 and k == 1:
-							trkr.stopTracking()
-							msg = 'Tracking stopped'
+					#### See if we need to poll and print info
+					if k == info:
+						## Is this one active?
+						isTracked = ''
+						if sat.catalog_number == trkr.getTracking():
+							isTracked = ' (tracking)'
 							
+						## Loss of signal information
+						los = sat.los
+						los = '%i:%02i:%04.1f' % (int(los/3600.0), int(los/60.0)%60, los%60)
+						
+						msg = '%s%s: LoS %s, range %.1f km, speed %.1f km/s' % (sat.name, isTracked, los, sat.range/1e3, sat.range_velocity/1e3)
+						info = -1
+						
 					#### Add the line to the screen, provided it will fit
 					if k <= 12:
 						## Standard flag for normal satellites
@@ -1371,7 +1432,7 @@ def main(args):
 			stdscr.addstr(k+5,  0, '  r   - Reset failed telescope slew                                            ')
 			stdscr.addstr(k+6,  0, '  a/s - Decrease/Increase track offset by %.1f second (x10 with shift)        ' % ( config['trackOffsetStep'].seconds+config['trackOffsetStep'].microseconds/1e6))
 			stdscr.addstr(k+7,  0, '  z/w - Decrease/Increase cross track offset by %.1f degrees (x10 with shift) ' % config['crossTrackOffsetStep'])
-			stdscr.addstr(k+8,  0, '  k/l - Decrease/Increase the magntiude limit by 0.5 mag                       ')
+			stdscr.addstr(k+8,  0, '  k/l - Decrease/Increase the magnitude limit by 0.5 mag                       ')
 			stdscr.addstr(k+9,  0, '  p   - Print current tracking offsets                                         ')
 			stdscr.addstr(k+10, 0, '  Q   - Exit                                                                   ')
 			
