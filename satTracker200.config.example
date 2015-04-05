@@ -41,6 +41,6 @@ updateInterval: 0.1
 ## trackOffsetStep - Step size in seconds for centering a satellite being
 ##                   tracked along the track path
 trackOffsetStep: 0.1
-## perpOffsetStep - Step size in degrees for centering a satellite being
-##                  tracked perpendicular to the path of the track
-perpOffsetStep: 0.1
+## crossTrackOffsetStep - Step size in degrees for centering a satellite being
+##                        tracked perpendicular to the path of the track
+crossTrackOffsetStep: 0.1

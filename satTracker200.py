@@ -13,6 +13,10 @@ from datetime import datetime, timedelta
 from ConfigParser import SafeConfigParser
 
 
+_deg2rad = math.pi/180.0
+_rad2deg = 180.0/math.pi
+_rad2hr  = 12.0/math.pi
+
 def usage(exitCode=None):
 	print """satTracker200.py - Satellite predictor/tracker for the LX200 classic 
 telescope.
@@ -31,12 +35,7 @@ Options:
 -i, --interval       In predictor mode, the duration in minutes to create 
                      predictions for (default = 180)
 -m, --mag-limit      In predictor mode, filters the event list of passes
-                     brighter thant the provided limit (default = no limit)
-                     
-Note:  If the first argument to the command is "download", the script will
-       connect to the CelesTrak website and download the latest versions of
-       the 'visual.txt' and 'science.txt' TLEs to the current directory and
-       parse those.
+                     brighter than the provided limit (default = no limit)
 """
 	
 	if exitCode is not None:
@@ -97,7 +96,7 @@ def parseOptions(args):
 	## Tracking parameters
 	config['updateInterval'] = cFile.getfloat('Tracking', 'updateInterval')
 	config['trackOffsetStep'] = abs( cFile.getfloat('Tracking', 'trackOffsetStep') )
-	config['perpOffsetStep'] = abs( cFile.getfloat('Tracking', 'perpOffsetStep') )
+	config['crossTrackOffsetStep'] = abs( cFile.getfloat('Tracking', 'crossTrackOffsetStep') )
 	## Convert the trackOffsetStep from a float to a timedelta instance
 	s = int(config['trackOffsetStep'])
 	u = int((config['trackOffsetStep']-s)*1e6)
@@ -370,8 +369,8 @@ class LX200(object):
 		tLng = self._str2coord(tLng, forceLow=True)*-1.0		# For the LX200, W is positive
 		
 		obs = ephem.Observer()
-		obs.lat = tLat*math.pi/180
-		obs.lon = tLng*math.pi/180
+		obs.lat = tLat*_deg2rad
+		obs.lon = tLng*_deg2rad
 		obs.elevation = elevation
 		
 		return obs
@@ -448,7 +447,7 @@ class LX200(object):
 		
 	def getCurrentPointing(self):
 		"""
-		Query the telescope for the current poitning location and return
+		Query the telescope for the current pointing location and return
 		it as a two-element tuple of RA, in decimal hours, and dec, in
 		decimal degrees.
 		"""
@@ -568,7 +567,7 @@ class LX200(object):
 		There are two keywords that control how this functions behaves:
 		'fast' and 'blocking'.  Setting 'fast' to True disables the 
 		on-line error detection in order to increase the command rate.
-		'blocking' causes the function to poll the telesocpe for motion
+		'blocking' causes the function to poll the telescope for motion
 		and waits until the current slew has finished before moving.
 		"""
 		
@@ -582,7 +581,7 @@ class LX200(object):
 				time.sleep(0.05)
 				
 			# Move
-			self.halfCurrentSlew()
+			self.haltCurrentSlew()
 			status = self._moveToPosition(ra, dec, fast=fast)
 		else:
 			if self.isSlewing():
@@ -671,7 +670,7 @@ class EarthSatellitePlus(ephem.EarthSatellite):
 			
 	def setStdMag(self, stdMag):
 		"""
-		Set the "standard magntiude" for this satellite to use for 
+		Set the "standard magnitude" for this satellite to use for 
 		brightness calculations.
 		"""
 		
@@ -686,7 +685,7 @@ class EarthSatellitePlus(ephem.EarthSatellite):
 		for attr in ('name', 'catalog_number', '_epoch', '_n', '_orbit', '_drag', '_decay', '_e'):
 			setattr(self, attr, getattr(sat, attr, None))
 		for attr in ('_inc', '_raan', '_ap', '_M'):
-			setattr(self, attr, getattr(sat, attr, None)*180/math.pi)
+			setattr(self, attr, getattr(sat, attr, None)*_rad2deg)
 
 
 def passPredictor(observer, satellites, date=None, time=None, utcOffset=0.0, duration=180.0, magnitudeCut=None):
@@ -694,7 +693,7 @@ def passPredictor(observer, satellites, date=None, time=None, utcOffset=0.0, dur
 	Function to predict passes of satellites and return them as a list of 
 	tuples.  The entry in each tuple is:
 	  * satellite name
-	  * maximimum brightness
+	  * maximum brightness
 	  * rise local date/time
 	  * rise azimuth
 	  * maximum altitude local date/time
@@ -805,7 +804,7 @@ class SatellitePositionTracker(object):
 	
 	def __init__(self, observer, satellites, lx200=None):
 		"""
-		Initialize the SatellitePositions instace using an ephem.Observer
+		Initialize the SatellitePositions instance using an ephem.Observer
 		instance, a list of ephem.EarthSatellite instances, and, optionally:
 		  * An update interval in seconds using the 'interval' keyword and
 		  * A LX200 instance for tracking using the 'lx200' keyword.
@@ -827,7 +826,7 @@ class SatellitePositionTracker(object):
 		# State variables for fine-tuning the telescope tracking
 		self.tracking = None
 		self.timeOffset = timedelta()
-		self.perpOffset = 0.0
+		self.crossTrackOffset = 0.0
 		
 	def updateObserver(self, observer):
 		"""
@@ -864,27 +863,27 @@ class SatellitePositionTracker(object):
 		
 		return self.timeOffset
 		
-	def setPerpOffset(self, degrees):
+	def setCrossTrackOffset(self, degrees):
 		"""
 		Set the perpendicular track offset to a value in decimal degrees.
 		"""
 		
-		self.perpOffset = degrees*math.pi/180
+		self.crossTrackOffset = degrees*_deg2rad
 		
-	def adjustPerpOffset(self, degrees):
+	def adjustCrossTrackOffset(self, degrees):
 		"""
-		Apply an additional adjustment to the perpendicular track offset
-		used a value in decimal degrees.
+		Apply an additional adjustment to the cross track offset using a 
+		value in decimal degrees.
 		"""
 		
-		self.perpOffset += degrees*math.pi/180
+		self.crossTrackOffset += degrees*_deg2rad
 		
-	def getPerpOffset(self):
+	def getCrossTrackOffset(self):
 		"""
 		Return the perpendicular track offset in decimal degrees.
 		"""
 		
-		return self.perpOffset*180/math.pi
+		return self.crossTrackOffset*_rad2deg
 		
 	def startTracking(self, catalog_number):
 		"""
@@ -918,19 +917,23 @@ class SatellitePositionTracker(object):
 		if self.lx200 is not None:
 			self.lx200.resetTarget()
 			
-	def getNumberVisible(self, magnitudeCut=15.0):
+	def getNumberVisible(self, magnitudeCut=None):
 		"""
 		Return the number of satellites currently visible.  This means 
-		above the horizon and brigher than the specified magnitude cut.
+		above the horizon and brighter than the specified magnitude cut.
 		"""
 		
+		# Deal with the magnitude magnitude
+		if magnitudeCut is None:
+			magnitudeCut = 15.0
+			
 		nVis = sum( [1 for sat in self.satellites if sat.alt > 0 and sat.magnitude <= magnitudeCut] )
 		return nVis
 		
 	def update(self):
 		"""
 		Computes the locations of all of the satellites provided and 
-		provides poitning information to the telescope for the satellite
+		provides pointing information to the telescope for the satellite
 		being tracked.  Returns the number of seconds used.
 		"""
 		
@@ -949,18 +952,18 @@ class SatellitePositionTracker(object):
 			sat.compute(self.observer)
 			
 			if sat.alt > 0:
-				## If the satellie is up, check and see if it is 
+				## If the satellite is up, check and see if it is 
 				## the one that we should be tracking.
 				if sat.catalog_number == self.tracking:
 					### Is there a telescope to use?
 					if self.lx200 is not None:
 						#### Apply a perpendicular correction to the
 						#### track to help with tracking
-						ra, dec = getPointFromBearing(sat.ra, sat.dec, sat.bearing+math.pi/2, self.perpOffset)
+						ra, dec = getPointFromBearing(sat.ra, sat.dec, sat.bearing+math.pi/2, self.crossTrackOffset)
 						
 						#### Radians -> hours/degrees
-						ra = ra*12/math.pi
-						dec = dec*180/math.pi
+						ra = ra*_rad2hr
+						dec = dec*_rad2deg
 						
 						#### Command the telescope
 						self.lx200.moveToPosition(ra, dec, blocking=False)
@@ -988,8 +991,8 @@ def main(args):
 	filenames = config['args']
 	
 	# Read in the TLEs and create a dictionary that helps map the NORAD ID
-	# number to a partcilar entry.  This helps with assigned intrinsic 
-	# magntiudes to satellites from the QuickSat qs.mag file.
+	# number to a particular entry.  This helps with assigned intrinsic 
+	# magnitudes to satellites from the QuickSat qs.mag file.
 	satellites = []
 	lookup = {}
 	for filename in filenames:
@@ -997,7 +1000,9 @@ def main(args):
 		data = fh.readlines()
 		fh.close()
 		
-		## Is this geo.txt?  If so, filter out everything but the "bright" ones
+		## Is this geo.txt?  If so, filter out everything but the "bright" ones.  If we
+		## don't do this we end up tracking far too many things at once and the telescope
+		## command rate drops.
 		if os.path.basename(filename) == 'geo.txt':
 			toKeep = [26038, 26608, 26724, 28626, 28644, 28903, 29520, 32018, 39616]
 		else:
@@ -1023,7 +1028,7 @@ def main(args):
 			except TypeError:
 				pass
 				
-			### Have we already loaded this satellite from a differnt file?
+			### Have we already loaded this satellite from a different file?
 			if sat.catalog_number not in lookup.keys():
 				satellites.append( sat )
 				lookup[sat.catalog_number] = len(satellites)-1
@@ -1056,7 +1061,7 @@ def main(args):
 		print "ERROR: Found no valid TLEs, exiting"
 		sys.exit(1)
 		
-	print "Loaded %i TLEs from %i files" % (nSats, len(filenames))
+	print "Loaded %i TLEs from %i file%s" % (nSats, len(filenames), 's' if len(filenames) > 1 else '')
 	
 	# Try and setup the telescope.  This not only opens up the port but also
 	# makes sure that the time is right.
@@ -1077,6 +1082,7 @@ def main(args):
 			
 		print "LX200 set to %s, computer at %s" % (tTime, cTime)
 		print "-> Difference is %s" % tcOffset
+		telStatusString = "LX200 set to %s, computer at %s" % (tTime, cTime)
 		
 		# Set the slew rate to maximum
 		tel.setMaximumSlewRate(8)
@@ -1088,7 +1094,7 @@ def main(args):
 	except Exception as e:
 		print "ERROR: %s" % str(e)
 		tel = None
-		tcOffset = timedelta()
+		telStatusString = 'Telescope not connected'
 		
 	# Set the observer according to the telescope, if found.  Otherwise, use
 	# the default values.
@@ -1097,10 +1103,10 @@ def main(args):
 	except Exception as e:
 		print "ERROR: %s" % str(e)
 		obs = ephem.Observer()
-		obs.lat = config['lat']*math.pi/180
-		obs.lon = config['lon']*math.pi/180
+		obs.lat = config['lat']*_deg2rad
+		obs.lon = config['lon']*_deg2rad
 		obs.elevation = config['elev']
-	print "Observer set to %.4f %s, %.4f %s @ %.1f m" % (abs(obs.lat)*180/math.pi, 'N' if obs.lat >= 0 else 'S', abs(obs.lon)*180/math.pi, 'E' if obs.lon >= 0 else 'W', obs.elevation)
+	print "Observer set to %.4f %s, %.4f %s @ %.1f m" % (abs(obs.lat)*_rad2deg, 'N' if obs.lat >= 0 else 'S', abs(obs.lon)*_rad2deg, 'E' if obs.lon >= 0 else 'W', obs.elevation)
 	
 	# Select how to run
 	if config['predictorMode']:
@@ -1139,7 +1145,7 @@ def main(args):
 				mag = " --- "
 			rTime = str(event[2])[5:]
 			mTime = str(event[4]).split(None, 1)[1]
-			mEl = event[5]*180/math.pi
+			mEl = event[5]*_rad2deg
 			sTime = str(event[6])[5:]
 			print "%24s  %5s  %13s  %8s @ %4.1f  %13s" % (event[0], mag, rTime, mTime, mEl, sTime)
 			
@@ -1169,7 +1175,7 @@ def main(args):
 		act = 0
 		trk = -1
 		magLimit = 6.0
-		msg = 'Telescope is %sconnected' % 'not ' if tel is None else ''
+		msg = telStatusString
 		oldMsg = ''
 		msgCount = 0
 		empty = ''
@@ -1185,15 +1191,19 @@ def main(args):
 			tElapsed = trkr.update()
 			
 			## Figure out how many satellites are currently visible and brighter
-			## than the current magntiude limit
+			## than the current magnitude limit
 			trkChange = False
 			nVis = trkr.getNumberVisible(magnitudeCut=magLimit)
 			
-			## Interact with the user's keypresses - one key at a time
+			## Interact with the user's key presses - one key at a time
 			c = stdscr.getch()
 			curses.flushinp()
 			if c == ord('Q'):
-				### 'q' to exit the main loop
+				### 'q' to exit the main loop after stopping the movement
+				if trkr.getTracking() is not None:
+					trkr.stopTracking()
+				if tel is not None:
+					tel.haltCurrentSlew()
 				break
 			elif c == curses.KEY_UP:
 				### Up arrow to change what is selected
@@ -1225,28 +1235,28 @@ def main(args):
 				msg = 'Time offset now %+.1f s' % (off.days*86400+off.seconds+off.microseconds/1e6)
 			elif c == ord('z'):
 				### 'z' to adjust the perpendicular track offset - negative
-				trkr.adjustPerpOffset( -config['perpOffsetStep'] )
-				off = trkr.getPerpOffset()
-				msg = 'Perpendicular offset now %+.1f degrees' % off
+				trkr.adjustCrossTrackOffset( -config['crossTrackOffsetStep'] )
+				off = trkr.getCrossTrackOffset()
+				msg = 'Cross track offset now %+.1f degrees' % off
 			elif c == ord('Z'):
 				### 'Z' to adjust the perpendicular track offset - negative x10
-				trkr.adjustPerpOffset( -10*config['perpOffsetStep'] )
-				off = trkr.getPerpOffset()
-				msg = 'Perpendicular offset now %+.1f degrees' % off
+				trkr.adjustCrossTrackOffset( -10*config['crossTrackOffsetStep'] )
+				off = trkr.getCrossTrackOffset()
+				msg = 'Cross track offset now %+.1f degrees' % off
 			elif c == ord('w'):
 				### 'w' to adjust the perpendicular track offset - positive
-				trkr.adjustPerpOffset( config['perpOffsetStep'] )
-				off = trkr.getPerpOffset()
-				msg = 'Perpendicular offset now %+.1f degrees' % off
+				trkr.adjustCrossTrackOffset( config['crossTrackOffsetStep'] )
+				off = trkr.getCrossTrackOffset()
+				msg = 'Cross track offset now %+.1f degrees' % off
 			elif c == ord('W'):
 				### 'W' to adjust the perpendicular track offset - positive x10
-				trkr.adjustPerpOffset( 10*config['perpOffsetStep'] )
-				off = trkr.getPerpOffset()
-				msg = 'Perpendicular offset now %+.1f degrees' % off
+				trkr.adjustCrossTrackOffset( 10*config['crossTrackOffsetStep'] )
+				off = trkr.getCrossTrackOffset()
+				msg = 'Cross track offset now %+.1f degrees' % off
 			elif c == ord('p'):
 				off1 = trkr.getTimeOffset()
-				off2 = trkr.getPerpOffset()
-				msg = 'Time offset is %+.1f s; Perpendicular offset is %+.1f degrees' % (off1.days*86400+off1.seconds+off1.microseconds/1e6, off2)
+				off2 = trkr.getCrossTrackOffset()
+				msg = 'Time offset is %+.1f s; Cross track offset is %+.1f degrees' % (off1.days*86400+off1.seconds+off1.microseconds/1e6, off2)
 			elif c == ord('k'):
 				### 'k' to adjust the magnitude limit - negative
 				magLimit -= 0.5
@@ -1290,7 +1300,7 @@ def main(args):
 				### Make the satellite easy-to-access
 				sat = trkr.satellites[j]
 				
-				### Is it visible and bright enought?
+				### Is it visible and bright enough?
 				if sat.alt > 0 and sat.magnitude <= magLimit:
 					#### Create the output line
 					output = "%5i  %24s  %12s  %12s  %8s-%3s  %5s" % (sat.catalog_number, sat.name, sat.az, sat.alt, 'Eclipsed' if sat.eclipsed else 'In Sun', 'Asc' if sat.rising else 'Dsc', '%5.1f' % sat.magnitude if sat.magnitude < 15 else ' --- ')
@@ -1300,7 +1310,7 @@ def main(args):
 						if k == trk:
 							if sat.catalog_number != trkr.getTracking():
 								trkr.setTimeOffset( timedelta() )
-								trkr.setPerpOffset( 0.0 )
+								trkr.setCrossTrackOffset( 0.0 )
 								trkr.startTracking(sat.catalog_number)
 								msg = 'Now tracking NORAD ID #%i' % sat.catalog_number
 								
@@ -1360,7 +1370,7 @@ def main(args):
 			stdscr.addstr(k+4,  0, '  t   - Start/stop tracking of the currently selected satellite                ')
 			stdscr.addstr(k+5,  0, '  r   - Reset failed telescope slew                                            ')
 			stdscr.addstr(k+6,  0, '  a/s - Decrease/Increase track offset by %.1f second (x10 with shift)        ' % ( config['trackOffsetStep'].seconds+config['trackOffsetStep'].microseconds/1e6))
-			stdscr.addstr(k+7,  0, '  z/w - Decrease/Increase cross track offset by %.1f degrees (x10 with shift) ' % config['perpOffsetStep'])
+			stdscr.addstr(k+7,  0, '  z/w - Decrease/Increase cross track offset by %.1f degrees (x10 with shift) ' % config['crossTrackOffsetStep'])
 			stdscr.addstr(k+8,  0, '  k/l - Decrease/Increase the magntiude limit by 0.5 mag                       ')
 			stdscr.addstr(k+9,  0, '  p   - Print current tracking offsets                                         ')
 			stdscr.addstr(k+10, 0, '  Q   - Exit                                                                   ')
