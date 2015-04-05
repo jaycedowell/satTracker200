@@ -679,6 +679,9 @@ class EarthSatellitePlus(ephem.EarthSatellite):
 				try:
 					event = observer.next_pass(self)
 					self._nextSet = event[4]
+					if self._nextSet is None:
+						self._nextSet = observer.date - 1.0
+						
 				except ValueError:
 					self._nextSet = observer.date + 1.0
 					
@@ -1377,7 +1380,7 @@ def main(args):
 						los = sat.los
 						los = '%i:%02i:%04.1f' % (int(los/3600.0), int(los/60.0)%60, los%60)
 						
-						msg = '%s%s: LoS %s, range %.1f km, speed %.1f km/s' % (sat.name, isTracked, los, sat.range/1e3, sat.range_velocity/1e3)
+						msg = '%s%s: LoS %s, range %.1f km, velocity %.1f km/s' % (sat.name, isTracked, los, sat.range/1e3, sat.range_velocity/1e3)
 						info = -1
 						
 					#### Add the line to the screen, provided it will fit
