@@ -63,7 +63,7 @@ def main(args):
 	
 	# Figure out what do to
 	toRefresh = []
-	for filename in ('visual.txt', 'science.txt', 'resource.txt'):
+	for filename in ('visual.txt', 'science.txt', 'resource.txt', 'geo.txt'):
 		if os.path.exists(filename):
 			## Get the age of the file
 			mtime = os.stat(filename)[7]
