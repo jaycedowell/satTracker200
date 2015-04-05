@@ -17,6 +17,7 @@ _deg2rad = math.pi/180.0
 _rad2deg = 180.0/math.pi
 _rad2hr  = 12.0/math.pi
 
+
 def usage(exitCode=None):
 	print """satTracker200.py - Satellite predictor/tracker for the LX200 classic 
 telescope.
@@ -33,7 +34,7 @@ Options:
 -t, --time           In predictor mode, the start time as HH:MM:SS for the 
                      predictions (default = now)
 -i, --interval       In predictor mode, the duration in minutes to create 
-                     predictions for (default = 180)
+                     predictions for (default = 180 = 3 hours)
 -m, --mag-limit      In predictor mode, filters the event list of passes
                      brighter than the provided limit (default = no limit)
 """
