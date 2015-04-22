@@ -66,7 +66,7 @@ def main(args):
 	for filename in ('visual.txt', 'science.txt', 'resource.txt', 'geo.txt'):
 		if os.path.exists(filename):
 			## Get the age of the file
-			mtime = os.stat(filename)[7]
+			mtime = os.stat(filename)[8]
 			age = time.time() - mtime
 			
 			print "File '%s' last modified %.1f days ago" % (filename, age/86400.)
