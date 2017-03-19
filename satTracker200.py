@@ -849,7 +849,7 @@ class SatellitePositionTracker(object):
 		
 		# State variables for progressive updates to keep down the execution
 		# time of update()
-		self.nTiers = 4
+		self.nTiers = len(self.satellites)/50+1
 		self.currentTier = 0
 		self.tiers = [i % self.nTiers for i in xrange(len(self.satellites))]
 		
@@ -1209,11 +1209,36 @@ def main(args):
 		
 		# Setup the TUI
 		stdscr = curses.initscr()
+		curses.start_color()
 		curses.noecho()
 		curses.cbreak()
 		stdscr.keypad(1)
 		stdscr.nodelay(1)
+		size = stdscr.getmaxyx()
+		if size[0] < 24 or size[1] < 80:
+			curses.nocbreak()
+			stdscr.keypad(0)
+			curses.echo()
+			curses.endwin()
+			raise RuntimeError("Terminal size needs to be at least 24 by 80")
 		
+		if curses.has_colors():
+			curses.init_pair(1, curses.COLOR_WHITE,  curses.COLOR_BLACK)
+			curses.init_pair(2, curses.COLOR_RED,    curses.COLOR_BLACK)
+			curses.init_pair(3, curses.COLOR_BLACK,  curses.COLOR_GREEN)
+			curses.init_pair(4, curses.COLOR_CYAN,   curses.COLOR_BLACK)
+			
+			std = curses.color_pair(1)
+			sel = curses.color_pair(2) | curses.A_BOLD
+			inf = curses.color_pair(3)
+			ntf = curses.color_pair(4)
+			
+		else:
+			std = curses.A_NORMAL
+			sel = curses.A_NORMAL
+			inf = curses.A_NORMAL
+			ntf = curses.A_NORMAL
+			
 		# Main TUI loop
 		## State control variables and such
 		act = 0					# Line number of the satellite the selector is on
@@ -1340,7 +1365,7 @@ def main(args):
 					
 			## Header for the satellite data
 			output = "%5s  %24s  %12s  %12s  %12s  %5s\n" % ('ID', 'Name', 'Azimuth', 'Elevation', 'Status', 'Mag.')
-			stdscr.addstr(0, 0, output, curses.A_UNDERLINE)
+			stdscr.addstr(0, 0, output, inf)
 			
 			## Have we stopped a track?  If so, let the user know.
 			if trkChange:
@@ -1386,18 +1411,15 @@ def main(args):
 					#### Add the line to the screen, provided it will fit
 					if k <= 12:
 						## Standard flag for normal satellites
-						displayFlags = curses.A_DIM
+						displayFlags = std
 						## Make the satellite currently be traced more obvious
 						if trkr.satellites[j].catalog_number == trkr.getTracking():
-							displayFlags = curses.A_BOLD
+							displayFlags = sel | curses.A_BOLD
 						## Make the satellite currently selected reversed
 						if k == act:
 							displayFlags |= curses.A_REVERSE
-						## Underline the last satellite in the list
-						if k == min([nVis-1, 12]):
-							displayFlags |= curses.A_UNDERLINE
 							
-						stdscr.addstr(k+1, 0, output, displayFlags)
+						stdscr.addstr(k+1,  0, output, displayFlags)
 						k += 1
 					else:
 						break
@@ -1429,22 +1451,28 @@ def main(args):
 				output += ' '
 				
 			## Final time/message/help information
-			stdscr.addstr(k+1,  0, output)
-			stdscr.addstr(k+2,  0, msg, curses.A_UNDERLINE)
-			stdscr.addstr(k+3,  0, 'Keys:                                                                          ')
-			stdscr.addstr(k+4,  0, '  t   - Start/stop tracking of the currently selected satellite                ')
-			stdscr.addstr(k+5,  0, '  r   - Reset failed telescope slew                                            ')
-			stdscr.addstr(k+6,  0, '  a/s - Decrease/Increase track offset by %.1f second (x10 with shift)        ' % ( config['trackOffsetStep'].seconds+config['trackOffsetStep'].microseconds/1e6))
-			stdscr.addstr(k+7,  0, '  z/w - Decrease/Increase cross track offset by %.1f degrees (x10 with shift) ' % config['crossTrackOffsetStep'])
-			stdscr.addstr(k+8,  0, '  k/l - Decrease/Increase the magnitude limit by 0.5 mag                       ')
-			stdscr.addstr(k+9,  0, '  p   - Print current tracking offsets                                         ')
-			stdscr.addstr(k+10, 0, '  Q   - Exit                                                                   ')
+			stdscr.addstr(k+1,  0, output, inf)
+			stdscr.addstr(k+2,  0, msg, ntf)
+			stdscr.addstr(k+3,  0, 'Keys')
+			stdscr.clrtoeol()
+			stdscr.addstr(k+4,  0, '  t   - Start/stop tracking of the currently selected satellite')
+			stdscr.clrtoeol()
+			stdscr.addstr(k+5,  0, '  r   - Reset failed telescope slew')
+			stdscr.clrtoeol()
+			stdscr.addstr(k+6,  0, '  a/s - Decrease/Increase track offset by %.1f second (x10 with shift)' % ( config['trackOffsetStep'].seconds+config['trackOffsetStep'].microseconds/1e6))
+			stdscr.clrtoeol()
+			stdscr.addstr(k+7,  0, '  z/w - Decrease/Increase cross track offset by %.1f degrees (x10 with shift)' % config['crossTrackOffsetStep'])
+			stdscr.clrtoeol()
+			stdscr.addstr(k+8,  0, '  k/l - Decrease/Increase the magnitude limit by 0.5 mag')
+			stdscr.clrtoeol()
+			stdscr.addstr(k+9,  0, '  p   - Print current tracking offsets')
+			stdscr.clrtoeol()
+			stdscr.addstr(k+10, 0, '  Q   - Exit')
+			stdscr.clrtoeol()
 			
 			## Pad out the window to deal with satellite setting
-			while k+11 < 23:
-				stdscr.addstr(k+11, 0, empty)
-				k += 1
-				
+			stdscr.clrtobot()
+			
 			## Refresh the display
 			stdscr.refresh()
 			
