@@ -11,6 +11,11 @@ import getopt
 import serial
 from datetime import datetime, timedelta
 from ConfigParser import SafeConfigParser
+import traceback
+try:
+	import cStringIO as StringIO
+except ImportError:
+	import StringIO
 
 
 _deg2rad = math.pi/180.0
@@ -1252,239 +1257,259 @@ def main(args):
 		while len(empty) < (5+2+24+2+12+2+12+2+12+2+5):
 			empty += ' '
 			
-		while True:
-			## Current time
-			tNow = datetime.utcnow()
-			tNowLocal = tNow + utcOffset
+		try:
+			while True:
+				## Current time
+				tNow = datetime.utcnow()
+				tNowLocal = tNow + utcOffset
 			
-			## Update the tracker
-			tElapsed = trkr.update()
+				## Update the tracker
+				tElapsed = trkr.update()
 			
-			## Figure out how many satellites are currently visible and brighter
-			## than the current magnitude limit
-			trkChange = False
-			nVis = trkr.getNumberVisible(magnitudeCut=magLimit)
+				## Figure out how many satellites are currently visible and brighter
+				## than the current magnitude limit
+				trkChange = False
+				nVis = trkr.getNumberVisible(magnitudeCut=magLimit)
 			
-			## Interact with the user's key presses - one key at a time
-			c = stdscr.getch()
-			curses.flushinp()
-			if c == ord('Q'):
-				### 'q' to exit the main loop after stopping the movement
-				if trkr.getTracking() is not None:
-					trkr.stopTracking()
-				if lx200 is not None:
-					lx200.haltCurrentSlew()
-				break
-			elif c == curses.KEY_UP:
-				### Up arrow to change what is selected
-				act -= 1
-				act = max([act, 0])
-			elif c == curses.KEY_DOWN:
-				### Down array to change what is selected
-				act += 1
-				act = min([act, nVis-1, 12])
-			elif c == ord('a'):
-				### 'a' to adjust the tracking time offset - negative
-				trkr.adjustTimeOffset( -config['trackOffsetStep'] )
-				off = trkr.getTimeOffset()
-				msg = 'Time offset now %+.1f s' % (off.days*86400+off.seconds+off.microseconds/1e6)
-			elif c == ord('A'):
-				### 'A' to adjust the tracking time offset - negative x10
-				trkr.adjustTimeOffset( -10*config['trackOffsetStep'] )
-				off = trkr.getTimeOffset()
-				msg = 'Time offset now %+.1f s' % (off.days*86400+off.seconds+off.microseconds/1e6)
-			elif c == ord('s'):
-				### 's' to adjust the tracking time offset - positive
-				trkr.adjustTimeOffset( config['trackOffsetStep'] )
-				off = trkr.getTimeOffset()
-				msg = 'Time offset now %+.1f s' % (off.days*86400+off.seconds+off.microseconds/1e6)
-			elif c == ord('S'):
-				### 's' to adjust the tracking time offset - positive x10
-				trkr.adjustTimeOffset( 10*config['trackOffsetStep'] )
-				off = trkr.getTimeOffset()
-				msg = 'Time offset now %+.1f s' % (off.days*86400+off.seconds+off.microseconds/1e6)
-			elif c == ord('z'):
-				### 'z' to adjust the perpendicular track offset - negative
-				trkr.adjustCrossTrackOffset( -config['crossTrackOffsetStep'] )
-				off = trkr.getCrossTrackOffset()
-				msg = 'Cross track offset now %+.1f degrees' % off
-			elif c == ord('Z'):
-				### 'Z' to adjust the perpendicular track offset - negative x10
-				trkr.adjustCrossTrackOffset( -10*config['crossTrackOffsetStep'] )
-				off = trkr.getCrossTrackOffset()
-				msg = 'Cross track offset now %+.1f degrees' % off
-			elif c == ord('w'):
-				### 'w' to adjust the perpendicular track offset - positive
-				trkr.adjustCrossTrackOffset( config['crossTrackOffsetStep'] )
-				off = trkr.getCrossTrackOffset()
-				msg = 'Cross track offset now %+.1f degrees' % off
-			elif c == ord('W'):
-				### 'W' to adjust the perpendicular track offset - positive x10
-				trkr.adjustCrossTrackOffset( 10*config['crossTrackOffsetStep'] )
-				off = trkr.getCrossTrackOffset()
-				msg = 'Cross track offset now %+.1f degrees' % off
-			elif c == ord('p'):
-				off1 = trkr.getTimeOffset()
-				off2 = trkr.getCrossTrackOffset()
-				msg = 'Time offset is %+.1f s; Cross track offset is %+.1f degrees' % (off1.days*86400+off1.seconds+off1.microseconds/1e6, off2)
-			elif c == ord('k'):
-				### 'k' to adjust the magnitude limit - negative
-				magLimit -= 0.5
-				magLimit = max([magLimit, -2.0])
-				msg = 'Magntiude limit now <= %.1f mag' % magLimit
-			elif c == ord('l'):
-				### 'k' to adjust the magnitude limit - negative
-				magLimit += 0.5
-				magLimit = min([magLimit, 15.0])
-				if magLimit == 15.0:
-					msg = 'Magntiude limit now disabled'
-				else:
+				## Interact with the user's key presses - one key at a time
+				c = stdscr.getch()
+				curses.flushinp()
+				if c == ord('Q'):
+					### 'q' to exit the main loop after stopping the movement
+					if trkr.getTracking() is not None:
+						trkr.stopTracking()
+					if lx200 is not None:
+						lx200.haltCurrentSlew()
+					break
+				elif c == curses.KEY_UP:
+					### Up arrow to change what is selected
+					act -= 1
+					act = max([act, 0])
+				elif c == curses.KEY_DOWN:
+					### Down array to change what is selected
+					act += 1
+					act = min([act, nVis-1, 12])
+				elif c == ord('a'):
+					### 'a' to adjust the tracking time offset - negative
+					trkr.adjustTimeOffset( -config['trackOffsetStep'] )
+					off = trkr.getTimeOffset()
+					msg = 'Time offset now %+.1f s' % (off.days*86400+off.seconds+off.microseconds/1e6)
+				elif c == ord('A'):
+					### 'A' to adjust the tracking time offset - negative x10
+					trkr.adjustTimeOffset( -10*config['trackOffsetStep'] )
+					off = trkr.getTimeOffset()
+					msg = 'Time offset now %+.1f s' % (off.days*86400+off.seconds+off.microseconds/1e6)
+				elif c == ord('s'):
+					### 's' to adjust the tracking time offset - positive
+					trkr.adjustTimeOffset( config['trackOffsetStep'] )
+					off = trkr.getTimeOffset()
+					msg = 'Time offset now %+.1f s' % (off.days*86400+off.seconds+off.microseconds/1e6)
+				elif c == ord('S'):
+					### 's' to adjust the tracking time offset - positive x10
+					trkr.adjustTimeOffset( 10*config['trackOffsetStep'] )
+					off = trkr.getTimeOffset()
+					msg = 'Time offset now %+.1f s' % (off.days*86400+off.seconds+off.microseconds/1e6)
+				elif c == ord('z'):
+					### 'z' to adjust the perpendicular track offset - negative
+					trkr.adjustCrossTrackOffset( -config['crossTrackOffsetStep'] )
+					off = trkr.getCrossTrackOffset()
+					msg = 'Cross track offset now %+.1f degrees' % off
+				elif c == ord('Z'):
+					### 'Z' to adjust the perpendicular track offset - negative x10
+					trkr.adjustCrossTrackOffset( -10*config['crossTrackOffsetStep'] )
+					off = trkr.getCrossTrackOffset()
+					msg = 'Cross track offset now %+.1f degrees' % off
+				elif c == ord('w'):
+					### 'w' to adjust the perpendicular track offset - positive
+					trkr.adjustCrossTrackOffset( config['crossTrackOffsetStep'] )
+					off = trkr.getCrossTrackOffset()
+					msg = 'Cross track offset now %+.1f degrees' % off
+				elif c == ord('W'):
+					### 'W' to adjust the perpendicular track offset - positive x10
+					trkr.adjustCrossTrackOffset( 10*config['crossTrackOffsetStep'] )
+					off = trkr.getCrossTrackOffset()
+					msg = 'Cross track offset now %+.1f degrees' % off
+				elif c == ord('p'):
+					off1 = trkr.getTimeOffset()
+					off2 = trkr.getCrossTrackOffset()
+					msg = 'Time offset is %+.1f s; Cross track offset is %+.1f degrees' % (off1.days*86400+off1.seconds+off1.microseconds/1e6, off2)
+				elif c == ord('k'):
+					### 'k' to adjust the magnitude limit - negative
+					magLimit -= 0.5
+					magLimit = max([magLimit, -2.0])
 					msg = 'Magntiude limit now <= %.1f mag' % magLimit
-			elif c == ord('r'):
-				### 'r' to reset the telescope target
-				trkr.resetTracking()
-				msg = 'Resetting telescope target'
-			elif c == ord('t'):
-				### 't' to toggle telesope tracking on/off
-				if trk == -1:
-					trk = act
-					trkChange = True
-				else:
-					trk = -1
-					trkChange = True
-			elif c == ord('i'):
-				### 'i' to get information about the currently selected satellite
-				info = act
-					
-			## Additional state check to make sure that we aren't still trying
-			## to track a satellite that has set/been eclipsed
-			if not trkChange:
-				if trk != -1 and trkr.getTracking() is None:
-					trk = -1
-					trkChange = True
-					
-			## Header for the satellite data
-			output = "%5s  %24s  %12s  %12s  %12s  %5s\n" % ('ID', 'Name', 'Azimuth', 'Elevation', 'Status', 'Mag.')
-			stdscr.addstr(0, 0, output, inf)
-			
-			## Have we stopped a track?  If so, let the user know.
-			if trkChange:
-				if trk == -1:
-					trkr.stopTracking()
-					msg = 'Tracking stopped'
-					trkChange = False
-					
-			## Satellite information
-			k = 0
-			for j in xrange(nSats):
-				### Make the satellite easy-to-access
-				sat = trkr.satellites[j]
-				
-				### Is it visible and bright enough?
-				if sat.alt > 0 and sat.magnitude <= magLimit:
-					#### Create the output line
-					output = "%5i  %24s  %12s  %12s  %8s-%3s  %5s" % (sat.catalog_number, sat.name, sat.az, sat.alt, 'Eclipsed' if sat.eclipsed else 'In Sun', 'Asc' if sat.rising else 'Dsc', '%5.1f' % sat.magnitude if sat.magnitude < 15 else ' --- ')
-					
-					#### See if we need to enable/disable tracking
-					if trkChange:
-						if k == trk:
-							if sat.catalog_number != trkr.getTracking():
-								trkr.setTimeOffset( timedelta() )
-								trkr.setCrossTrackOffset( 0.0 )
-								trkr.startTracking(sat.catalog_number)
-								msg = 'Now tracking \'%s\' (NORAD ID #%i)' % (sat.name, sat.catalog_number)
-								
-					#### See if we need to poll and print info
-					if k == info:
-						## Is this one active?
-						isTracked = ''
-						if sat.catalog_number == trkr.getTracking():
-							isTracked = ' (tracking)'
-							
-						## Loss of signal information
-						los = sat.los
-						los = '%i:%02i:%04.1f' % (int(los/3600.0), int(los/60.0)%60, los%60)
-						
-						msg = '%s%s: LoS %s, range %.1f km, velocity %.1f km/s' % (sat.name, isTracked, los, sat.range/1e3, sat.range_velocity/1e3)
-						info = -1
-						
-					#### Add the line to the screen, provided it will fit
-					if k <= 12:
-						## Standard flag for normal satellites
-						displayFlags = std
-						## Make the satellite currently be traced more obvious
-						if trkr.satellites[j].catalog_number == trkr.getTracking():
-							displayFlags = sel | curses.A_BOLD
-						## Make the satellite currently selected reversed
-						if k == act:
-							displayFlags |= curses.A_REVERSE
-							
-						stdscr.addstr(k+1,  0, output, displayFlags)
-						k += 1
+				elif c == ord('l'):
+					### 'k' to adjust the magnitude limit - negative
+					magLimit += 0.5
+					magLimit = min([magLimit, 15.0])
+					if magLimit == 15.0:
+						msg = 'Magntiude limit now disabled'
 					else:
-						break
+						msg = 'Magntiude limit now <= %.1f mag' % magLimit
+				elif c == ord('r'):
+					### 'r' to reset the telescope target
+					trkr.resetTracking()
+					msg = 'Resetting telescope target'
+				elif c == ord('t'):
+					### 't' to toggle telesope tracking on/off
+					if trk == -1:
+						trk = act
+						trkChange = True
+					else:
+						trk = -1
+						trkChange = True
+				elif c == ord('i'):
+					### 'i' to get information about the currently selected satellite
+					info = act
+					
+				## Additional state check to make sure that we aren't still trying
+				## to track a satellite that has set/been eclipsed
+				if not trkChange:
+					if trk != -1 and trkr.getTracking() is None:
+						trk = -1
+						trkChange = True
+					
+				## Header for the satellite data
+				output = "%5s  %24s  %12s  %12s  %12s  %5s\n" % ('ID', 'Name', 'Azimuth', 'Elevation', 'Status', 'Mag.')
+				stdscr.addstr(0, 0, output, inf)
+			
+				## Have we stopped a track?  If so, let the user know.
+				if trkChange:
+					if trk == -1:
+						trkr.stopTracking()
+						msg = 'Tracking stopped'
+						trkChange = False
+					
+				## Satellite information
+				k = 0
+				for j in xrange(nSats):
+					### Make the satellite easy-to-access
+					sat = trkr.satellites[j]
+				
+					### Is it visible and bright enough?
+					if sat.alt > 0 and sat.magnitude <= magLimit:
+						#### Create the output line
+						output = "%5i  %24s  %12s  %12s  %8s-%3s  %5s" % (sat.catalog_number, sat.name, sat.az, sat.alt, 'Eclipsed' if sat.eclipsed else 'In Sun', 'Asc' if sat.rising else 'Dsc', '%5.1f' % sat.magnitude if sat.magnitude < 15 else ' --- ')
+					
+						#### See if we need to enable/disable tracking
+						if trkChange:
+							if k == trk:
+								if sat.catalog_number != trkr.getTracking():
+									trkr.setTimeOffset( timedelta() )
+									trkr.setCrossTrackOffset( 0.0 )
+									trkr.startTracking(sat.catalog_number)
+									msg = 'Now tracking \'%s\' (NORAD ID #%i)' % (sat.name, sat.catalog_number)
+								
+						#### See if we need to poll and print info
+						if k == info:
+							## Is this one active?
+							isTracked = ''
+							if sat.catalog_number == trkr.getTracking():
+								isTracked = ' (tracking)'
+							
+							## Loss of signal information
+							los = sat.los
+							los = '%i:%02i:%04.1f' % (int(los/3600.0), int(los/60.0)%60, los%60)
 						
-			## Pad out the message stored in 'msg' generated from interaction 
-			## with the user/telescope
-			while len(msg) < (5+2+24+2+12+2+12+2+12+2+5):
-				msg += ' '
+							msg = '%s%s: LoS %s, range %.1f km, velocity %.1f km/s' % (sat.name, isTracked, los, sat.range/1e3, sat.range_velocity/1e3)
+							info = -1
+						
+						#### Add the line to the screen, provided it will fit
+						if k <= 12:
+							## Standard flag for normal satellites
+							displayFlags = std
+							## Make the satellite currently be traced more obvious
+							if trkr.satellites[j].catalog_number == trkr.getTracking():
+								displayFlags = sel | curses.A_BOLD
+							## Make the satellite currently selected reversed
+							if k == act:
+								displayFlags |= curses.A_REVERSE
+							
+							stdscr.addstr(k+1,  0, output, displayFlags)
+							k += 1
+						else:
+							break
+						
+				## Pad out the message stored in 'msg' generated from interaction 
+				## with the user/telescope
+				while len(msg) < (5+2+24+2+12+2+12+2+12+2+5):
+					msg += ' '
 				
-			## See if it is time to clear off the message
-			if msg == oldMsg:
-				msgCount += 1
-				if msgCount == 201:
-					msg = empty
-					msgCount = 0
-			oldMsg = msg
+				## See if it is time to clear off the message
+				if msg == oldMsg:
+					msgCount += 1
+					if msgCount == 201:
+						msg = empty
+						msgCount = 0
+				oldMsg = msg
 			
-			## Pad out the current UTC time
-			output = "UTC: "
-			output += tNow.strftime("%Y/%m/%d %H:%M:%S")
-			output += ".%01i" % (float(tNow.strftime("%f"))/1e5,)
-			output += "           "
-			output += "%5.3f s" % tElapsed
-			output += "           "
-			output += "LT: "
-			output += tNowLocal.strftime("%Y/%m/%d %H:%M:%S")
-			output += ".%01i" % (float(tNowLocal.strftime("%f"))/1e5,)
-			while len(output) < (5+2+24+2+12+2+12+2+12+2+5):
-				output += ' '
+				## Pad out the current UTC time
+				output = "UTC: "
+				output += tNow.strftime("%Y/%m/%d %H:%M:%S")
+				output += ".%01i" % (float(tNow.strftime("%f"))/1e5,)
+				output += "           "
+				output += "%5.3f s" % tElapsed
+				output += "           "
+				output += "LT: "
+				output += tNowLocal.strftime("%Y/%m/%d %H:%M:%S")
+				output += ".%01i" % (float(tNowLocal.strftime("%f"))/1e5,)
+				while len(output) < (5+2+24+2+12+2+12+2+12+2+5):
+					output += ' '
 				
-			## Final time/message/help information
-			stdscr.addstr(k+1,  0, output, inf)
-			stdscr.addstr(k+2,  0, msg, ntf)
-			stdscr.addstr(k+3,  0, 'Keys')
-			stdscr.clrtoeol()
-			stdscr.addstr(k+4,  0, '  t   - Start/stop tracking of the currently selected satellite')
-			stdscr.clrtoeol()
-			stdscr.addstr(k+5,  0, '  r   - Reset failed telescope slew')
-			stdscr.clrtoeol()
-			stdscr.addstr(k+6,  0, '  a/s - Decrease/Increase track offset by %.1f second (x10 with shift)' % ( config['trackOffsetStep'].seconds+config['trackOffsetStep'].microseconds/1e6))
-			stdscr.clrtoeol()
-			stdscr.addstr(k+7,  0, '  z/w - Decrease/Increase cross track offset by %.1f degrees (x10 with shift)' % config['crossTrackOffsetStep'])
-			stdscr.clrtoeol()
-			stdscr.addstr(k+8,  0, '  k/l - Decrease/Increase the magnitude limit by 0.5 mag')
-			stdscr.clrtoeol()
-			stdscr.addstr(k+9,  0, '  p   - Print current tracking offsets')
-			stdscr.clrtoeol()
-			stdscr.addstr(k+10, 0, '  Q   - Exit')
-			stdscr.clrtoeol()
+				## Final time/message/help information
+				stdscr.addstr(k+1,  0, output, inf)
+				stdscr.addstr(k+2,  0, msg, ntf)
+				stdscr.addstr(k+3,  0, 'Keys')
+				stdscr.clrtoeol()
+				stdscr.addstr(k+4,  0, '  t   - Start/stop tracking of the currently selected satellite')
+				stdscr.clrtoeol()
+				stdscr.addstr(k+5,  0, '  r   - Reset failed telescope slew')
+				stdscr.clrtoeol()
+				stdscr.addstr(k+6,  0, '  a/s - Decrease/Increase track offset by %.1f second (x10 with shift)' % ( config['trackOffsetStep'].seconds+config['trackOffsetStep'].microseconds/1e6))
+				stdscr.clrtoeol()
+				stdscr.addstr(k+7,  0, '  z/w - Decrease/Increase cross track offset by %.1f degrees (x10 with shift)' % config['crossTrackOffsetStep'])
+				stdscr.clrtoeol()
+				stdscr.addstr(k+8,  0, '  k/l - Decrease/Increase the magnitude limit by 0.5 mag')
+				stdscr.clrtoeol()
+				stdscr.addstr(k+9,  0, '  p   - Print current tracking offsets')
+				stdscr.clrtoeol()
+				stdscr.addstr(k+10, 0, '  Q   - Exit')
+				stdscr.clrtoeol()
 			
-			## Pad out the window to deal with satellite setting
-			stdscr.clrtobot()
+				## Pad out the window to deal with satellite setting
+				stdscr.clrtobot()
 			
-			## Refresh the display
-			stdscr.refresh()
+				## Refresh the display
+				stdscr.refresh()
 			
-			## Sleep until the next iteration
-			tSleep = config['updateInterval'] - tElapsed
-			time.sleep( max([tSleep, 0.001]) )
+				## Sleep until the next iteration
+				tSleep = config['updateInterval'] - tElapsed
+				time.sleep( max([tSleep, 0.001]) )
+			
+		except KeyboardInterrupt:
+			pass
+			
+		except Exception as error:
+			exc_type, exc_value, exc_traceback = sys.exc_info()
+			fileObject = StringIO.StringIO()
+			traceback.print_tb(exc_traceback, file=fileObject)
+			tbString = fileObject.getvalue()
+			fileObject.close()
 			
 		# Close out the curses session
 		curses.nocbreak()
 		stdscr.keypad(0)
 		curses.echo()
 		curses.endwin()
+		
+		# Final reporting
+		try:
+			## Error
+			print "%s: failed with %s at line %i" % (os.path.basename(__file__), str(error), traceback.tb_lineno(exc_traceback))
+			for line in tbString.split('\n'):
+				print line
+		except NameError:
+			pass
 
 
 if __name__ == "__main__":
