@@ -3,62 +3,14 @@
 import os
 import sys
 import time
-import getopt
-import urllib.request import urlretrieve
 import zipfile
-
-
-def usage(exitCode=None):
-    print("""downloadQSMag.py - Download and extract the QuickSat intrinsic
-magntiude file
-
-Usage: downloadQSMag.py [OPTIONS]
-
-Options:
--h, --help           Display this help message
--f, --force          Force re-downloading and extracting the data
-""")
-    
-    if exitCode is not None:
-        sys.exit(exitCode)
-    else:
-        return True
-
-
-def parseOptions(args):
-    config = {}
-    config['force'] = False
-    
-    try:
-        opts, args = getopt.getopt(args, "hf", ["help", "force"])
-    except getopt.GetoptError as err:
-        # Print help information and exit:
-        print(str(err)) # will print something like "option -a not recognized"
-        usage(exitCode=2)
-    
-    # Work through opts
-    for opt, value in opts:
-        if opt in ('-h', '--help'):
-            usage(exitCode=0)
-        elif opt in ('-f', '--force'):
-            config['force'] = True
-        else:
-            assert False
-            
-    # Add in arguments
-    config['args'] = args
-    
-    # Return configuration
-    return config
-    
+import argparse
+import urllib.request import urlretrieve
 
 
 def main(args):
-    # Parse the command line
-    config = parseOptions(args)
-    
     # Figure out what do to
-    if os.path.exists('qs.mag') and not config['force']:
+    if os.path.exists('qs.mag') and not args.force:
         ## Nothing to do
         print("The 'qs.mag' file already exists, skipping.")
         
@@ -85,4 +37,11 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+	parser = argparse.ArgumentParser(
+		description='download and extract the QuickSat intrinsic magntiude file',
+		formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+	parser.add_argument('-f', '--force', action='store_true',
+						help='force re-downloading and extracting the data')
+	args = parser.parse_args()
+	main(args)

@@ -3,64 +3,11 @@
 import os
 import sys
 import time
-import getopt
+import argparse
 from urllib.request import urlretrieve
 
 
-def usage(exitCode=None):
-    print("""refreshTLEs.py - Look at the CelesTrak TLEs in the current directory
-and refresh old ones.
-
-Usage: refreshTLEs.py [OPTIONS]
-
-Options:
--h, --help           Display this help message
--f, --force          Force re-downloading the TLEs
--a, --age            Age limit in days for refreshing a file 
-                     (default = 2 days)
-""")
-    
-    if exitCode is not None:
-        sys.exit(exitCode)
-    else:
-        return True
-
-
-def parseOptions(args):
-    config = {}
-    config['force'] = False
-    config['age'] = 2*86400.
-    
-    try:
-        opts, args = getopt.getopt(args, "hfa:", ["help", "force", "age="])
-    except getopt.GetoptError as err:
-        # Print help information and exit:
-        print(str(err)) # will print something like "option -a not recognized"
-        usage(exitCode=2)
-    
-    # Work through opts
-    for opt, value in opts:
-        if opt in ('-h', '--help'):
-            usage(exitCode=0)
-        elif opt in ('-f', '--force'):
-            config['force'] = True
-        elif opt in ('-a', '--age'):
-            config['age'] = float(value)*86400
-        else:
-            assert False
-            
-    # Add in arguments
-    config['args'] = args
-    
-    # Return configuration
-    return config
-    
-
-
 def main(args):
-    # Parse the command line
-    config = parseOptions(args)
-    
     # Figure out what do to
     toRefresh = []
     for filename in ('visual.txt', 'science.txt', 'resource.txt', 'geo.txt', 'starlink.txt'):
@@ -72,7 +19,7 @@ def main(args):
             print("File '%s' last modified %.1f days ago" % (filename, age/86400.))
             
             ## Does this file need to be refreshed?
-            if age > config['age'] or config['force']:
+            if age > args.age or args.force:
                 toRefresh.append( filename )
                 print("-> adding to update list")
             else:
@@ -99,4 +46,14 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    parser = argparse.ArgumentParser(
+        description='look at the CelesTrak TLEs in the current directory and refresh old ones', 
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        )
+    parser.add_argument('-f', '--force', action='store_true',
+                        help='force re-downloading the TLEs')
+    parser.add_argument('-a', '--age', type=int, default=2,
+                        help='age limit in days for refreshing a file')
+    args = parser.parse_args()
+    args.age *= 86400    # days -> seconds
+    main(args)
