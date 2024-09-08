@@ -18,7 +18,7 @@ def main(args):
         ## Download the file and extract its contents
         print("Downloading 'qsmag.zip'")
         t0 = time.time()
-        urlretrieve("https://www.prismnet.com/~mmccants/programs/qsmag.zip", "qsmag.zip")
+        urlretrieve("https://www.mmccants.org/programs/qsmag.zip", "qsmag.zip")
         t1 = time.time()
         sz = os.path.getsize("qsmag.zip")
         print(f"-> downloaded {sz} bytes in {t1-t0:.3f} s ({sz/1024/(t1-t0):.1f} kB/s)")
