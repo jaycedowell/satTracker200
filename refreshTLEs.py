@@ -16,7 +16,7 @@ def main(args):
             mtime = os.stat(filename)[8]
             age = time.time() - mtime
             
-            print("File '%s' last modified %.1f days ago" % (filename, age/86400.))
+            print(f"File '{filename}' last modified {age/86400:.1f} days ago")
             
             ## Does this file need to be refreshed?
             if age > args.age or args.force:
@@ -27,14 +27,14 @@ def main(args):
                 
         else:
             toRefresh.append( filename )
-            print("File '%s' does not exist" % filename)
+            print(f"File '{filename}' does not exist")
             print("-> adding to update list")
     print(" ")
     
     # Do it
     for filename in toRefresh:
         ## Download the file and extract its contents
-        print("Downloading '%s' from 'http://celestrak.com'" % filename)
+        print(f"Downloading '{filename}' from 'http://celestrak.com'")
         
         url = "http://celestrak.com/NORAD/elements/%s" % filename
         
@@ -42,7 +42,7 @@ def main(args):
         urlretrieve(url, filename)
         t1 = time.time()
         sz = os.path.getsize(filename)
-        print("-> downloaded %i bytes in %.3f s (%.1f kB/s)" % (sz, t1-t0, sz/1024./(t1-t0)))
+        print(f"-> downloaded {sz} bytes in {t1-t0:.3f} s ({sz/1024/(t1-t0):.1f} kB/s)")
 
 
 if __name__ == "__main__":
