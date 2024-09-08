@@ -10,7 +10,7 @@ import curses
 import getopt
 import serial
 from datetime import datetime, timedelta
-from ConfigParser import SafeConfigParser
+from configparser import SafeConfigParser
 import traceback
 try:
 	import cStringIO as StringIO
@@ -24,7 +24,7 @@ _rad2hr  = 12.0/math.pi
 
 
 def usage(exitCode=None):
-	print """satTracker200.py - Satellite predictor/tracker for the LX200 classic 
+	print("""satTracker200.py - Satellite predictor/tracker for the LX200 classic 
 telescope.
 
 Usage: satTracker200.py [OPTIONS] tle_file [tle_file [...]]
@@ -42,7 +42,7 @@ Options:
                      predictions for (default = 180 = 3 hours)
 -m, --mag-limit      In predictor mode, filters the event list of passes
                      brighter than the provided limit (default = no limit)
-"""
+""")
 	
 	if exitCode is not None:
 		sys.exit(exitCode)
@@ -61,9 +61,9 @@ def parseOptions(args):
 	
 	try:
 		opts, args = getopt.getopt(args, "hc:pd:t:i:m:", ["help", "config-file=", "predict", "date=", "time=", "interval=", "mag-limit="])
-	except getopt.GetoptError, err:
+	except getopt.GetoptError as err:
 		# Print help information and exit:
-		print str(err) # will print something like "option -a not recognized"
+		print(str(err)) # will print something like "option -a not recognized"
 		usage(exitCode=2)
 	
 	# Work through opts
@@ -856,7 +856,7 @@ class SatellitePositionTracker(object):
 		# time of update()
 		self.nTiers = len(self.satellites)/50+1
 		self.currentTier = 0
-		self.tiers = [i % self.nTiers for i in xrange(len(self.satellites))]
+		self.tiers = [i % self.nTiers for i in range(len(self.satellites))]
 		
 		# State variables for fine-tuning the telescope tracking
 		self.tracking = None
@@ -1057,16 +1057,16 @@ def main(args):
 			toKeep = None
 			
 		## Convert to EarthSatellitePlus instances
-		for i in xrange(len(data)/3):
+		for i in range(len(data)//3):
 			sat = EarthSatellitePlus()
 			try:
 				sat.fillFromPyEphem( ephem.readtle(data[3*i+0], data[3*i+1], data[3*i+2]) )
 			except ValueError:
-				print "ERROR: Cannot parse TLE:"
-				print "  %s" % data[3*i+0].rstrip()
-				print "  %s" % data[3*i+1].rstrip()
-				print "  %s" % data[3*i+2].rstrip()
-				print "-> skipping"
+				print("ERROR: Cannot parse TLE:")
+				print("  %s" % data[3*i+0].rstrip())
+				print("  %s" % data[3*i+1].rstrip())
+				print("  %s" % data[3*i+2].rstrip())
+				print("-> skipping")
 				continue
 				
 			### Is this in the geo.txt "bright" list?
@@ -1100,16 +1100,16 @@ def main(args):
 				pass
 		fh.close()
 	except IOError as e:
-		print "ERROR: Error reading 'qs.mag': %s" % str(e)
+		print("ERROR: Error reading 'qs.mag': %s" % str(e))
 		pass
 		
 	# Report on what we found
 	nSats = len(satellites)
 	if nSats == 0:
-		print "ERROR: Found no valid TLEs, exiting"
+		print("ERROR: Found no valid TLEs, exiting")
 		sys.exit(1)
 		
-	print "Loaded %i TLEs from %i file%s" % (nSats, len(filenames), 's' if len(filenames) > 1 else '')
+	print("Loaded %i TLEs from %i file%s" % (nSats, len(filenames), 's' if len(filenames) > 1 else ''))
 	
 	# Try and setup the telescope.  This not only opens up the port but also
 	# makes sure that the time is right.
@@ -1128,8 +1128,8 @@ def main(args):
 			cTime = datetime.utcnow()
 			tcOffset = cTime - tTime
 			
-		print "LX200 set to %s, computer at %s" % (tTime, cTime)
-		print "-> Difference is %s" % tcOffset
+		print("LX200 set to %s, computer at %s" % (tTime, cTime))
+		print("-> Difference is %s" % tcOffset)
 		lx200StatusString = "LX200 set to %s, computer at %s" % (tTime, cTime)
 		
 		# Set the slew rate to maximum
@@ -1140,7 +1140,7 @@ def main(args):
 		lx200.setHighPrecision()
 		
 	except Exception as e:
-		print "ERROR: %s" % str(e)
+		print("ERROR: %s" % str(e))
 		lx200 = None
 		lx200StatusString = 'Telescope not connected'
 		
@@ -1149,12 +1149,12 @@ def main(args):
 	try:
 		obs = lx200.getObserver(elevation=config['elev'])
 	except Exception as e:
-		print "ERROR: %s" % str(e)
+		print("ERROR: %s" % str(e))
 		obs = ephem.Observer()
 		obs.lat = config['lat']*_deg2rad
 		obs.lon = config['lon']*_deg2rad
 		obs.elevation = config['elev']
-	print "Observer set to %.4f %s, %.4f %s @ %.1f m" % (abs(obs.lat)*_rad2deg, 'N' if obs.lat >= 0 else 'S', abs(obs.lon)*_rad2deg, 'E' if obs.lon >= 0 else 'W', obs.elevation)
+	print("Observer set to %.4f %s, %.4f %s @ %.1f m" % (abs(obs.lat)*_rad2deg, 'N' if obs.lat >= 0 else 'S', abs(obs.lon)*_rad2deg, 'E' if obs.lon >= 0 else 'W', obs.elevation))
 	
 	# Select how to run
 	if config['predictorMode']:
@@ -1181,10 +1181,10 @@ def main(args):
 		events = passPredictor(obs, satellites, date=d, time=t, utcOffset=config['utcOffset'],
 					duration=config['predictorInterval'], magnitudeCut=config['predictorMagLimit'])
 					
-		print " "
-		print "Satellite Pass Predictions for %s:" % dt
-		print "%24s  %5s  %13s  %15s  %13s" % ('Name', 'Mag.', 'Rise Time', 'Max. Time/El.', 'Set Time')
-		print "-" * (24+2+5+2+13+2+15+2+13)
+		print(" ")
+		print("Satellite Pass Predictions for %s:" % dt)
+		print("%24s  %5s  %13s  %15s  %13s" % ('Name', 'Mag.', 'Rise Time', 'Max. Time/El.', 'Set Time'))
+		print("-" * (24+2+5+2+13+2+15+2+13))
 		for event in events:
 			mag = event[1]
 			if mag < 15:
@@ -1195,7 +1195,7 @@ def main(args):
 			mTime = str(event[4]).split(None, 1)[1]
 			mEl = event[5]*_rad2deg
 			sTime = str(event[6])[5:]
-			print "%24s  %5s  %13s  %8s @ %4.1f  %13s" % (event[0], mag, rTime, mTime, mEl, sTime)
+			print("%24s  %5s  %13s  %8s @ %4.1f  %13s" % (event[0], mag, rTime, mTime, mEl, sTime))
 			
 	else:
 		# Tracking mode
@@ -1382,7 +1382,7 @@ def main(args):
 					
 				## Satellite information
 				k = 0
-				for j in xrange(nSats):
+				for j in range(nSats):
 					### Make the satellite easy-to-access
 					sat = trkr.satellites[j]
 				
@@ -1505,9 +1505,9 @@ def main(args):
 		# Final reporting
 		try:
 			## Error
-			print "%s: failed with %s at line %i" % (os.path.basename(__file__), str(error), traceback.tb_lineno(exc_traceback))
+			print("%s: failed with %s at line %i" % (os.path.basename(__file__), str(error), traceback.tb_lineno(exc_traceback)))
 			for line in tbString.split('\n'):
-				print line
+				print(line)
 		except NameError:
 			pass
 

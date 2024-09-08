@@ -1,14 +1,14 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import os
 import sys
 import time
 import getopt
-import urllib
+from urllib.request import urlretrieve
 
 
 def usage(exitCode=None):
-	print """refreshTLEs.py - Look at the CelesTrak TLEs in the current directory
+	print("""refreshTLEs.py - Look at the CelesTrak TLEs in the current directory
 and refresh old ones.
 
 Usage: refreshTLEs.py [OPTIONS]
@@ -18,7 +18,7 @@ Options:
 -f, --force          Force re-downloading the TLEs
 -a, --age            Age limit in days for refreshing a file 
                      (default = 2 days)
-"""
+""")
 	
 	if exitCode is not None:
 		sys.exit(exitCode)
@@ -33,9 +33,9 @@ def parseOptions(args):
 	
 	try:
 		opts, args = getopt.getopt(args, "hfa:", ["help", "force", "age="])
-	except getopt.GetoptError, err:
+	except getopt.GetoptError as err:
 		# Print help information and exit:
-		print str(err) # will print something like "option -a not recognized"
+		print(str(err)) # will print something like "option -a not recognized"
 		usage(exitCode=2)
 	
 	# Work through opts
@@ -63,41 +63,40 @@ def main(args):
 	
 	# Figure out what do to
 	toRefresh = []
-	for filename in ('visual.txt', 'science.txt', 'resource.txt', 'geo.txt'):
+	for filename in ('visual.txt', 'science.txt', 'resource.txt', 'geo.txt', 'starlink.txt'):
 		if os.path.exists(filename):
 			## Get the age of the file
 			mtime = os.stat(filename)[8]
 			age = time.time() - mtime
 			
-			print "File '%s' last modified %.1f days ago" % (filename, age/86400.)
+			print("File '%s' last modified %.1f days ago" % (filename, age/86400.))
 			
 			## Does this file need to be refreshed?
 			if age > config['age'] or config['force']:
 				toRefresh.append( filename )
-				print "-> adding to update list"
+				print("-> adding to update list")
 			else:
-				print "-> skipping"
+				print("-> skipping")
 				
 		else:
 			toRefresh.append( filename )
-			print "File '%s' does not exist" % filename
-			print "-> adding to update list"
-	print " "
+			print("File '%s' does not exist" % filename)
+			print("-> adding to update list")
+	print(" ")
 	
 	# Do it
 	for filename in toRefresh:
 		## Download the file and extract its contents
-		print "Downloading '%s' from 'http://celestrak.com'" % filename
+		print("Downloading '%s' from 'http://celestrak.com'" % filename)
 		
 		url = "http://celestrak.com/NORAD/elements/%s" % filename
 		
 		t0 = time.time()
-		urllib.urlretrieve(url, filename)
+		urlretrieve(url, filename)
 		t1 = time.time()
 		sz = os.path.getsize(filename)
-		print "-> downloaded %i bytes in %.3f s (%.1f kB/s)" % (sz, t1-t0, sz/1024./(t1-t0))
+		print("-> downloaded %i bytes in %.3f s (%.1f kB/s)" % (sz, t1-t0, sz/1024./(t1-t0)))
 
 
 if __name__ == "__main__":
 	main(sys.argv[1:])
-	
