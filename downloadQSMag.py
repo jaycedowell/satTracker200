@@ -1,15 +1,15 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import os
 import sys
 import time
 import getopt
-import urllib
+import urllib.request import urlretrieve
 import zipfile
 
 
 def usage(exitCode=None):
-	print """downloadQSMag.py - Download and extract the QuickSat intrinsic
+	print("""downloadQSMag.py - Download and extract the QuickSat intrinsic
 magntiude file
 
 Usage: downloadQSMag.py [OPTIONS]
@@ -17,7 +17,7 @@ Usage: downloadQSMag.py [OPTIONS]
 Options:
 -h, --help           Display this help message
 -f, --force          Force re-downloading and extracting the data
-"""
+""")
 	
 	if exitCode is not None:
 		sys.exit(exitCode)
@@ -31,9 +31,9 @@ def parseOptions(args):
 	
 	try:
 		opts, args = getopt.getopt(args, "hf", ["help", "force"])
-	except getopt.GetoptError, err:
+	except getopt.GetoptError as err:
 		# Print help information and exit:
-		print str(err) # will print something like "option -a not recognized"
+		print(str(err)) # will print something like "option -a not recognized"
 		usage(exitCode=2)
 	
 	# Work through opts
@@ -60,25 +60,25 @@ def main(args):
 	# Figure out what do to
 	if os.path.exists('qs.mag') and not config['force']:
 		## Nothing to do
-		print "The 'qs.mag' file already exists, skipping."
+		print("The 'qs.mag' file already exists, skipping.")
 		
 	else:
 		## Download the file and extract its contents
-		print "Downloading 'qsmag.zip'"
+		print("Downloading 'qsmag.zip'")
 		t0 = time.time()
-		urllib.urlretrieve("https://www.prismnet.com/~mmccants/programs/qsmag.zip", "qsmag.zip")
+		urlretrieve("https://www.prismnet.com/~mmccants/programs/qsmag.zip", "qsmag.zip")
 		t1 = time.time()
 		sz = os.path.getsize("qsmag.zip")
-		print "-> downloaded %i bytes in %.3f s (%.1f kB/s)" % (sz, t1-t0, sz/1024./(t1-t0))
+		print("-> downloaded %i bytes in %.3f s (%.1f kB/s)" % (sz, t1-t0, sz/1024./(t1-t0)))
 		
-		print "Extracting to 'qs.mag'"
+		print("Extracting to 'qs.mag'")
 		qsmag = zipfile.ZipFile('qsmag.zip')
 		
 		fh = open('qs.mag', 'w')
 		fh.write( qsmag.read('qs.mag') )
 		fh.close()
 		sz = os.path.getsize('qs.mag')
-		print "-> extracted %s bytes to 'qs.mag'" % sz
+		print("-> extracted %s bytes to 'qs.mag'" % sz)
 		
 		## Cleanup
 		os.unlink('qsmag.zip')
@@ -86,4 +86,3 @@ def main(args):
 
 if __name__ == "__main__":
 	main(sys.argv[1:])
-	
