@@ -36,7 +36,8 @@ def main(args):
         ## Download the file and extract its contents
         print(f"Downloading '{filename}' from 'http://celestrak.com'")
         
-        url = "http://celestrak.com/NORAD/elements/%s" % filename
+        tlename = os.path.splitext(filename)[0]
+        url = f"https://celestrak.org/NORAD/elements/gp.php?GROUP={tlename}&FORMAT=tle"
         
         t0 = time.time()
         urlretrieve(url, filename)
