@@ -14,6 +14,8 @@ from configparser import ConfigParser
 import traceback
 from io import StringIO
 
+import buffalo8
+
 
 _deg2rad = math.pi/180.0
 _rad2deg = 180.0/math.pi
@@ -255,15 +257,15 @@ class LX200(object):
             value *= -1
         return value
         
-	def _write(self, command):
-		"""
-		Internal function to write a command to the serial port.
-		"""
-		
-		command = command.encode('ascii')
-		command = command.replace(b':::', b'\xdf')
-		self.serial.write(command)
-		
+    def _write(self, command):
+        """
+        Internal function to write a command to the serial port.
+        """
+        
+        command = command.encode('ascii')
+        command = command.replace(b':::', b'\xdf')
+        self.serial.write(command)
+        
     def _readNumber(self):
         """
         Internal function to read a single byte from the serial port.
@@ -283,8 +285,8 @@ class LX200(object):
         """
         
         c = self.port.read_until(b'#')
-		c = c.replace(b'\xdf', b':::')
-		c = c.replace(b'\xff', b'1')
+        c = c.replace(b'\xdf', b':::')
+        c = c.replace(b'\xff', b'1')
         return c[:-1].decode('ascii')
         
     def setBaudRate(self, baud):
@@ -1273,6 +1275,7 @@ def main(args):
             
                 ## Interact with the user's key presses - one key at a time
                 c = stdscr.getch()
+                g = buffalo8.read()
                 curses.flushinp()
                 if c == ord('Q'):
                     ### 'q' to exit the main loop after stopping the movement
@@ -1281,15 +1284,15 @@ def main(args):
                     if lx200 is not None:
                         lx200.haltCurrentSlew()
                     break
-                elif c == curses.KEY_UP:
+                elif c == curses.KEY_UP or g == 'X':
                     ### Up arrow to change what is selected
                     act -= 1
                     act = max([act, 0])
-                elif c == curses.KEY_DOWN:
+                elif c == curses.KEY_DOWN or g == 'B':
                     ### Down array to change what is selected
                     act += 1
                     act = min([act, nVis-1, 12])
-                elif c == ord('a'):
+                elif c == ord('a') or g == 'left':
                     ### 'a' to adjust the tracking time offset - negative
                     trkr.adjustTimeOffset( -config['trackOffsetStep'] )
                     off = trkr.getTimeOffset()
@@ -1299,7 +1302,7 @@ def main(args):
                     trkr.adjustTimeOffset( -10*config['trackOffsetStep'] )
                     off = trkr.getTimeOffset()
                     msg = f"Time offset now {off.total_seconds():+.1f} s"
-                elif c == ord('s'):
+                elif c == ord('s') or g == 'right':
                     ### 's' to adjust the tracking time offset - positive
                     trkr.adjustTimeOffset( config['trackOffsetStep'] )
                     off = trkr.getTimeOffset()
@@ -1309,7 +1312,7 @@ def main(args):
                     trkr.adjustTimeOffset( 10*config['trackOffsetStep'] )
                     off = trkr.getTimeOffset()
                     msg = f"Time offset now {off.total_seconds():+.1f} s"
-                elif c == ord('z'):
+                elif c == ord('z') or g == 'down':
                     ### 'z' to adjust the perpendicular track offset - negative
                     trkr.adjustCrossTrackOffset( -config['crossTrackOffsetStep'] )
                     off = trkr.getCrossTrackOffset()
@@ -1319,7 +1322,7 @@ def main(args):
                     trkr.adjustCrossTrackOffset( -10*config['crossTrackOffsetStep'] )
                     off = trkr.getCrossTrackOffset()
                     msg = f"Cross track offset now {off:+.1f} degrees"
-                elif c == ord('w'):
+                elif c == ord('w') or g == 'up':
                     ### 'w' to adjust the perpendicular track offset - positive
                     trkr.adjustCrossTrackOffset( config['crossTrackOffsetStep'] )
                     off = trkr.getCrossTrackOffset()
@@ -1333,12 +1336,12 @@ def main(args):
                     off1 = trkr.getTimeOffset()
                     off2 = trkr.getCrossTrackOffset()
                     msg = f"Time offset is {off1.total_seconds():+.1f} s; Cross track offset is {off2:+.1f} degrees"
-                elif c == ord('k'):
+                elif c == ord('k') or g == 'L':
                     ### 'k' to adjust the magnitude limit - negative
                     magLimit -= 0.5
                     magLimit = max([magLimit, -2.0])
                     msg = f"Magntiude limit now <= {magLimit:.1f} mag"
-                elif c == ord('l'):
+                elif c == ord('l') or g == 'R':
                     ### 'k' to adjust the magnitude limit - negative
                     magLimit += 0.5
                     magLimit = min([magLimit, 15.0])
@@ -1346,11 +1349,11 @@ def main(args):
                         msg = 'Magntiude limit now disabled'
                     else:
                         msg = f"Magntiude limit now <= {magLimit:.1f} mag"
-                elif c == ord('r'):
+                elif c == ord('r') or g == 'clear':
                     ### 'r' to reset the telescope target
                     trkr.resetTracking()
                     msg = 'Resetting telescope target'
-                elif c == ord('t'):
+                elif c == ord('t') or g == 'start':
                     ### 't' to toggle telesope tracking on/off
                     if trk == -1:
                         trk = act
