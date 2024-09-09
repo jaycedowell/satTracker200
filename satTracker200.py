@@ -10,7 +10,7 @@ import curses
 import getopt
 import serial
 from datetime import datetime, timedelta
-from configparser import SafeConfigParser
+from configparser import ConfigParser
 import traceback
 from io import StringIO
 
@@ -86,7 +86,7 @@ def parseOptions(args):
     config['args'] = args
     
     # Parse the configuration file
-    cFile = SafeConfigParser()
+    cFile = ConfigParser()
     cFile.read(config['configFile'])
     ## Site parameters
     config['lat'] = cFile.getfloat('Site', 'latitude')
@@ -230,10 +230,10 @@ class LX200(object):
         decG = '-' if dec < 0 else '+'
         if self._highPrecision:
             decD, decM, decS = int(abs(dec)), int(abs(dec)*60)%60, int(abs(dec)*3600)%60
-            value = "%s%02i%s%02i:%02i" % (decG, decD, '\\xdf', decM, decS)
+            value = "%s%02i:::%02i:%02i" % (decG, decD, decM, decS)
         else:
             decD, decM = int(abs(dec)), (abs(dec)*60)%60
-            value = "%s%02i%s%02i" % (decG, decD, '\\xdf', decM)
+            value = "%s%02i:::%02i" % (decG, decD, decM)
             
         return value
         
@@ -243,19 +243,27 @@ class LX200(object):
         precision) and convert it to a HH.HHHHHH or sDD.DDDDDD value.
         """
         
-        data = data.replace('\\xdf', ':')
         if (self._highPrecision and not forceLow) or forceHigh:
-            d, m, s = data.split(':', 2)
+            d, m, s = data.split(':::', 2)
             d, m, s = int(d), int(m), int(s)
             value = abs(d) + m/60. + s/3600.
         else:
-            d, m = data.split(':', 1)
+            d, m = data.split(':::', 1)
             d, m = int(d), float(m)
             value = abs(d) + m/60.0
         if d < 0:
             value *= -1
         return value
         
+	def _write(self, command):
+		"""
+		Internal function to write a command to the serial port.
+		"""
+		
+		command = command.encode('ascii')
+		command = command.replace(b':::', b'\xdf')
+		self.serial.write(command)
+		
     def _readNumber(self):
         """
         Internal function to read a single byte from the serial port.
@@ -275,7 +283,9 @@ class LX200(object):
         """
         
         c = self.port.read_until(b'#')
-        return c[:-1].decode('ascii', errors='backslashreplace')
+		c = c.replace(b'\xdf', b':::')
+		c = c.replace(b'\xff', b'1')
+        return c[:-1].decode('ascii')
         
     def setBaudRate(self, baud):
         """
@@ -291,7 +301,7 @@ class LX200(object):
             return True
             
         try:
-            self.port.write(f"#:SB{rates[baud]}#".encode('ascii'))
+            self._write(f"#:SB{rates[baud]}#")
             status = bool( self._readNumber() )
             if status:
                 self.port.close()
@@ -309,11 +319,11 @@ class LX200(object):
         instance in UTC.
         """
         
-        self.port.write(b'#:GC#')
+        self._write('#:GC#')
         tDate = self._readString()
-        self.port.write(b'#:GL#')
+        self._write('#:GL#')
         tTime = self._readString()
-        self.port.write(b'#:GG#')
+        self._write('#:GG#')
         tOff = self._readString()
         
         dt = datetime.strptime(f"{tDate} {tTime}", "%m/%d/%y %H:%M:%S")
@@ -340,13 +350,13 @@ class LX200(object):
         tDate = dt.strftime("%m/%d/%y")
         tTime = dt.strftime("%H:%M:%S")
         
-        self.port.write(f"#:SC{tDate}#".encode('ascii'))
+        self._write(f"#:SC{tDate}#")
         statusD = bool( self._readNumber() )
         if statusD:
             msg = self._readString()
-        self.port.write(f"#:SL{tTime}#".encode('ascii'))
+        self._write(f"#:SL{tTime}#")
         statusT = bool( self._readNumber() )
-        self.port.write(b'#:SG+00.0#')
+        self._write('#:SG+00.0#')
         statusO = bool( self._readNumber() )
         
         return statusD and statusT and statusO
@@ -358,9 +368,9 @@ class LX200(object):
         the elevation of the location, in meters, above sea level.
         """
         
-        self.port.write(b'#:Gt#')
+        self._write('#:Gt#')
         tLat = self._readString()
-        self.port.write(b'#:Gg#')
+        self._write('#:Gg#')
         tLng = self._readString()
         
         tLat = self._str2coord(tLat, forceLow=True)
@@ -381,7 +391,7 @@ class LX200(object):
         
         # Are we already there?
         if not self._highPrecision:
-            self.port.write(b'#:U#')
+            self._write('#:U#')
             self._highPrecision = True
             
     def setLowPrecision(self):
@@ -392,7 +402,7 @@ class LX200(object):
         
         # Are the already there?
         if self._highPrecision:
-            self.port.write(b'#:U#')
+            self._write('#:U#')
             self._highPrecision = False
             
     def setMaximumSlewRate(self, degPerSec):
@@ -412,7 +422,7 @@ class LX200(object):
         if int(degPerSec) not in (2, 3, 4, 5, 6, 7, 8):
             raise ValueError(f"Invalid slew rate: {int(degPerSec)} deg/s")
             
-        self.port.write(f"#:Sw{int(degPerSec)}#".encode('ascii'))
+        self._write(f"#:Sw{int(degPerSec)}#")
         return bool( self._readNumber() )
         
     def setSlewRateMax(self):
@@ -420,28 +430,28 @@ class LX200(object):
         Set the slew rate to "Slew" (fastest).
         """
         
-        self.port.write(b'#:RS#')
+        self._write('#:RS#')
         
     def setSlewRateFind(self):
         """
         Set the slew rate to "Find" (second fastest).
         """
         
-        self.port.write(b'#:RM#')
+        self._write('#:RM#')
         
     def setSlewRateCenter(self):
         """
         Set the slew rate to "Center" (second slowest).
         """
         
-        self.port.write(b'#:RC#')
+        self._write('#:RC#')
         
     def setSlewRateGuide(self):
         """
         Set the slew rate to "Guide" (slowest).
         """
         
-        self.port.write(b'#:RG#')
+        self._write('#:RG#')
         
     def getCurrentPointing(self):
         """
@@ -450,9 +460,9 @@ class LX200(object):
         decimal degrees.
         """
         
-        self.port.write(b'#:GR#')
+        self._write('#:GR#')
         ra = self._readString()
-        self.port.write(b'#:GD#')
+        self._write('#:GD#')
         dec = self._readString()
         
         ra = self._str2coord(ra)
@@ -465,7 +475,7 @@ class LX200(object):
         decimal hours.
         """
         
-        self.port.write(b'#:GS#')
+        self._write('#:GS#')
         lst = self._readString()
         
         lst = self._str2coord(lst, forceHigh=True)
@@ -477,14 +487,14 @@ class LX200(object):
         as a two-element tuple of lower limit, upper limit.
         """
         
-        self.port.write(b'#:Gh#')
+        self._write('#:Gh#')
         ll = self._readString()
-        self.port.write(b'#:Go#')
+        self._write('#:Go#')
         ul = self._readString()
         
-        ll = ll.replace('\\xdf', '')
+        ll = ll.replace(':::', '')
         ll = int(ll)
-        ul = ul.replace('\\xdf', '')
+        ul = ul.replace(':::', '')
         ul = int(ul)
         
         return ll, ul
@@ -504,9 +514,9 @@ class LX200(object):
             
         # Set
         status = True
-        self.port.write(f"#:Sh{int(lowerLimit):02d}\\xdf#".encode('ascii').replace(b'\\xdf', b'\xdf'))
+        self._write(f"#:Sh{int(lowerLimit):02d}:::#")
         status &= bool( self._readNumber() )
-        self.port.write(f"#:So{int(upperLimit):02d}\\xdf#".encode('ascii').replace(b'\\xdf', b'\xdf'))
+        self._write(f"#:So{int(upperLimit):02d}:::#")
         status &= bool( self._readNumber() )
         
         return status
@@ -517,9 +527,9 @@ class LX200(object):
         Returns True if it is, False otherwise.
         """
         
-        self.port.write(b'#:D#')
+        self._write('#:D#')
         dist = self._readString()
-        dist = sum([1 for c in dist if c == '\\xff'])
+        dist = sum([1 for c in dist if c == '1'])
         if dist > 2:
             return True
         else:
@@ -533,16 +543,16 @@ class LX200(object):
         
         # Set the RA/dec
         status = True
-        self.port.write(f"#:Sr{raStr}#".encode('ascii').replace(b'\\xdf', b'\xdf'))
+        self._write(f"#:Sr{raStr}#")
         if not fast:
             status &= bool( self._readNumber() )
-        self.port.write(f"#:Sd{decStr}#".encode('ascii').replace(b'\\xdf', b'\xdf'))
+        self._write(f"#:Sd{decStr}#")
         if not fast:
             status &= bool( self._readNumber() )
             
         # If that has worked, start the slew
         if status:
-            self.port.write(b'#:MS#')
+            self._write('#:MS#')
             if not fast:
                 status &= not bool( self._readNumber() )
             if not status:
@@ -595,9 +605,9 @@ class LX200(object):
         Stop the current slew.
         """
         
-        self.port.write(b'#:Q#')
+        self._write('#:Q#')
         for d in ('n', 's'):
-            self.port.write(f"#:Q{d}#".encode('ascii'))
+            self._write(f"#:Q{d}#")
             
     def resetTarget(self):
         """
