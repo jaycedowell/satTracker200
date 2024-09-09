@@ -504,9 +504,9 @@ class LX200(object):
             
         # Set
         status = True
-        self.port.write(f"#:Sh{int(lowerLimit):02d}{chr(223)}#".encode('ascii'))
+        self.port.write(f"#:Sh{int(lowerLimit):02d}\\xdf#".encode('ascii').replace(b'\\xdf', b'\xdf'))
         status &= bool( self._readNumber() )
-        self.port.write(f"#:So{int(upperLimit):02d}{chr(223)}#".encode('ascii'))
+        self.port.write(f"#:So{int(upperLimit):02d}\\xdf#".encode('ascii').replace(b'\\xdf', b'\xdf'))
         status &= bool( self._readNumber() )
         
         return status
