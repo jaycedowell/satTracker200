@@ -12,10 +12,7 @@ import serial
 from datetime import datetime, timedelta
 from configparser import SafeConfigParser
 import traceback
-try:
-    import cStringIO as StringIO
-except ImportError:
-    import StringIO
+from io import StringIO
 
 
 _deg2rad = math.pi/180.0
@@ -200,10 +197,10 @@ class LX200(object):
         self.port.flushOutput()
         
         # Make sure there is a telescope on the other end
-        self.port.write(chr(0x06))
+        self.port.write(b'\x06')
         status = self.port.read(1)
-        if status not in ('L', 'A', 'P'):
-            raise RuntimeError("Error communicating with the LX200 on '%s'" % self.device)
+        if status not in (b'L', b'A', b'P'):
+            raise RuntimeError(f"Error communicating with the LX200 on '{self.device}'")
             
     def _ra2str(self, ra, deg=False):
         """
@@ -233,10 +230,10 @@ class LX200(object):
         decG = '-' if dec < 0 else '+'
         if self._highPrecision:
             decD, decM, decS = int(abs(dec)), int(abs(dec)*60)%60, int(abs(dec)*3600)%60
-            value = "%s%02i%s%02i:%02i" % (decG, decD, chr(223), decM, decS)
+            value = "%s%02i%s%02i:%02i" % (decG, decD, '\\xdf', decM, decS)
         else:
             decD, decM = int(abs(dec)), (abs(dec)*60)%60
-            value = "%s%02i%s%02i" % (decG, decD, chr(223), decM)
+            value = "%s%02i%s%02i" % (decG, decD, '\\xdf', decM)
             
         return value
         
@@ -246,7 +243,7 @@ class LX200(object):
         precision) and convert it to a HH.HHHHHH or sDD.DDDDDD value.
         """
         
-        data = data.replace(chr(223), ':')
+        data = data.replace('\\xdf', ':')
         if (self._highPrecision and not forceLow) or forceHigh:
             d, m, s = data.split(':', 2)
             d, m, s = int(d), int(m), int(s)
@@ -266,9 +263,9 @@ class LX200(object):
         
         c = self.port.read(1)
         try:
-            c = int(c, 10)
+            c = int(c)
         except ValueError:
-            pass
+            c = 0
         return c
         
     def _readString(self):
@@ -277,13 +274,8 @@ class LX200(object):
         The data up to but not including the '#' are returned.
         """
         
-        c = self.port.read(1)
-        try:
-            while c[-1] != '#':
-                c += self.port.read(1)
-        except IndexError:
-            pass
-        return c[:-1]
+        c = self.port.read_until(b'#')
+        return c[:-1].decode('ascii', errors='backslashreplace')
         
     def setBaudRate(self, baud):
         """
@@ -292,14 +284,14 @@ class LX200(object):
         """
         
         rates = {56700: 1, 38400: 2, 28800: 3, 19200: 4, 
-                14400: 5,  9600: 6,  4800: 7,  2400: 8, 
-                1200: 9}
+                 14400: 5,  9600: 6,  4800: 7,  2400: 8, 
+                  1200: 9}
                 
         if baud == self._baud:
             return True
             
         try:
-            self.port.write('#:SB%i#' % rates[baud])
+            self.port.write(f"#:SB{rates[baud]}#".encode('ascii'))
             status = bool( self._readNumber() )
             if status:
                 self.port.close()
@@ -317,14 +309,14 @@ class LX200(object):
         instance in UTC.
         """
         
-        self.port.write('#:GC#')
+        self.port.write(b'#:GC#')
         tDate = self._readString()
-        self.port.write('#:GL#')
+        self.port.write(b'#:GL#')
         tTime = self._readString()
-        self.port.write('#:GG#')
+        self.port.write(b'#:GG#')
         tOff = self._readString()
         
-        dt = datetime.strptime("%s %s" % (tDate, tTime), "%m/%d/%y %H:%M:%S")
+        dt = datetime.strptime(f"{tDate} {tTime}", "%m/%d/%y %H:%M:%S")
         
         tOff = float(tOff)
         gOff = -1 if tOff < 0 else 1
@@ -348,13 +340,13 @@ class LX200(object):
         tDate = dt.strftime("%m/%d/%y")
         tTime = dt.strftime("%H:%M:%S")
         
-        self.port.write('#:SC%s#' % tDate)
+        self.port.write(f"#:SC{tDate}#".encode('ascii'))
         statusD = bool( self._readNumber() )
         if statusD:
             msg = self._readString()
-        self.port.write('#:SL%s#' % tTime)
+        self.port.write(f"#:SL{tTime}#".encode('ascii'))
         statusT = bool( self._readNumber() )
-        self.port.write('#:SG+00.0#')
+        self.port.write(b'#:SG+00.0#')
         statusO = bool( self._readNumber() )
         
         return statusD and statusT and statusO
@@ -366,9 +358,9 @@ class LX200(object):
         the elevation of the location, in meters, above sea level.
         """
         
-        self.port.write('#:Gt#')
+        self.port.write(b'#:Gt#')
         tLat = self._readString()
-        self.port.write('#:Gg#')
+        self.port.write(b'#:Gg#')
         tLng = self._readString()
         
         tLat = self._str2coord(tLat, forceLow=True)
@@ -389,7 +381,7 @@ class LX200(object):
         
         # Are we already there?
         if not self._highPrecision:
-            self.port.write('#:U#')
+            self.port.write(b'#:U#')
             self._highPrecision = True
             
     def setLowPrecision(self):
@@ -400,7 +392,7 @@ class LX200(object):
         
         # Are the already there?
         if self._highPrecision:
-            self.port.write('#:U#')
+            self.port.write(b'#:U#')
             self._highPrecision = False
             
     def setMaximumSlewRate(self, degPerSec):
@@ -418,9 +410,9 @@ class LX200(object):
         
         # Validate the rate
         if int(degPerSec) not in (2, 3, 4, 5, 6, 7, 8):
-            raise ValueError("Invalid slew rate: %i deg/s" % int(degPerSec))
+            raise ValueError(f"Invalid slew rate: {int(degPerSec)} deg/s")
             
-        self.port.write('#:Sw%i#' % int(degPerSec))
+        self.port.write(f"#:Sw{int(degPerSec)}#".encode('ascii'))
         return bool( self._readNumber() )
         
     def setSlewRateMax(self):
@@ -428,28 +420,28 @@ class LX200(object):
         Set the slew rate to "Slew" (fastest).
         """
         
-        self.port.write('#:RS#')
+        self.port.write(b'#:RS#')
         
     def setSlewRateFind(self):
         """
         Set the slew rate to "Find" (second fastest).
         """
         
-        self.port.write('#:RM#')
+        self.port.write(b'#:RM#')
         
     def setSlewRateCenter(self):
         """
         Set the slew rate to "Center" (second slowest).
         """
         
-        self.port.write('#:RC#')
+        self.port.write(b'#:RC#')
         
     def setSlewRateGuide(self):
         """
         Set the slew rate to "Guide" (slowest).
         """
         
-        self.port.write('#:RG#')
+        self.port.write(b'#:RG#')
         
     def getCurrentPointing(self):
         """
@@ -458,9 +450,9 @@ class LX200(object):
         decimal degrees.
         """
         
-        self.port.write('#:GR#')
+        self.port.write(b'#:GR#')
         ra = self._readString()
-        self.port.write('#:GD#')
+        self.port.write(b'#:GD#')
         dec = self._readString()
         
         ra = self._str2coord(ra)
@@ -473,7 +465,7 @@ class LX200(object):
         decimal hours.
         """
         
-        self.port.write('#:GS#')
+        self.port.write(b'#:GS#')
         lst = self._readString()
         
         lst = self._str2coord(lst, forceHigh=True)
@@ -485,14 +477,14 @@ class LX200(object):
         as a two-element tuple of lower limit, upper limit.
         """
         
-        self.port.write('#:Gh#')
+        self.port.write(b'#:Gh#')
         ll = self._readString()
-        self.port.write('#:Go#')
+        self.port.write(b'#:Go#')
         ul = self._readString()
         
-        ll = ll.replace(chr(223), '')
+        ll = ll.replace('\\xdf', '')
         ll = int(ll)
-        ul = ul.replace(chr(223), '')
+        ul = ul.replace('\\xdf', '')
         ul = int(ul)
         
         return ll, ul
@@ -504,17 +496,17 @@ class LX200(object):
         
         # Validate
         if lowerLimit < 0 or lowerLimit > 90:
-            raise ValueError("Invalid lower limit: %i" % int(lowerLimit))
+            raise ValueError(f"Invalid lower limit: {int(lowerLimit)}")
         if upperLimit < 0 or upperLimit > 90:
-            raise ValueError("Invalid upper limit: %i" % int(upperLimit))
+            raise ValueError(f"Invalid upper limit: {int(upperLimit)}")
         if upperLimit <= lowerLimit:
-            raise ValueError("Invalid limits: %i to %i" % (int(lowerLimit), int(upperLimit)))
+            raise ValueError(f"Invalid limits: {int(lowerLimit)} to {int(upperLimit)}")
             
         # Set
         status = True
-        self.port.write("#:Sh%02i%s#" % (int(lowerLimit), chr(223)))
+        self.port.write(f"#:Sh{int(lowerLimit):02d}{chr(223)}#".encode('ascii'))
         status &= bool( self._readNumber() )
-        self.port.write("#:So%02i%s#" % (int(upperLimit), chr(223)))
+        self.port.write(f"#:So{int(upperLimit):02d}{chr(223)}#".encode('ascii'))
         status &= bool( self._readNumber() )
         
         return status
@@ -525,9 +517,9 @@ class LX200(object):
         Returns True if it is, False otherwise.
         """
         
-        self.port.write('#:D#')
+        self.port.write(b'#:D#')
         dist = self._readString()
-        dist = sum([1 for c in dist if c == chr(255)])
+        dist = sum([1 for c in dist if c == '\\xff'])
         if dist > 2:
             return True
         else:
@@ -541,16 +533,16 @@ class LX200(object):
         
         # Set the RA/dec
         status = True
-        self.port.write('#:Sr%s#' % raStr)
+        self.port.write(f"#:Sr{raStr}#".encode('ascii').replace(b'\\xdf', b'\xdf'))
         if not fast:
             status &= bool( self._readNumber() )
-        self.port.write('#:Sd%s#' % decStr)
+        self.port.write(f"#:Sd{decStr}#".encode('ascii').replace(b'\\xdf', b'\xdf'))
         if not fast:
             status &= bool( self._readNumber() )
             
         # If that has worked, start the slew
         if status:
-            self.port.write('#:MS#')
+            self.port.write(b'#:MS#')
             if not fast:
                 status &= not bool( self._readNumber() )
             if not status:
@@ -603,9 +595,9 @@ class LX200(object):
         Stop the current slew.
         """
         
-        self.port.write('#:Q#')
+        self.port.write(b'#:Q#')
         for d in ('n', 's'):
-            self.port.write('#:Q%s#' % d)
+            self.port.write(f"#:Q{d}#".encode('ascii'))
             
     def resetTarget(self):
         """
@@ -745,7 +737,7 @@ def passPredictor(observer, satellites, date=None, time=None, utcOffset=0.0, dur
         dt += oG*timedelta(seconds=oS, microseconds=oU)
     else:
         ## Input date/time
-        dt = datetime.strptime("%s %s" % (date, time), "%Y/%m/%d %H:%M:%S")
+        dt = datetime.strptime(f"{date} {time}", "%Y/%m/%d %H:%M:%S")
     ## Save the original observer date so that we can restore it later
     origDate = 1.0*observer.date
     ## Set the date to local
@@ -854,7 +846,7 @@ class SatellitePositionTracker(object):
         
         # State variables for progressive updates to keep down the execution
         # time of update()
-        self.nTiers = len(self.satellites)/50+1
+        self.nTiers = len(self.satellites)//50+1
         self.currentTier = 0
         self.tiers = [i % self.nTiers for i in range(len(self.satellites))]
         
@@ -1044,10 +1036,9 @@ def main(args):
     satellites = []
     lookup = {}
     for filename in filenames:
-        fh = open(filename, 'r')
-        data = fh.readlines()
-        fh.close()
-        
+        with open(filename, 'r') as fh:
+            data = fh.readlines()
+            
         ## Is this geo.txt?  If so, filter out everything but the "bright" ones.  If we
         ## don't do this we end up tracking far too many things at once and the telescope
         ## command rate drops.
@@ -1085,22 +1076,21 @@ def main(args):
     # and add the information to the various
     # instances.
     try:
-        fh = open('qs.mag', 'r')
-        for line in fh:
-            cNum = int(line[:5], 10)
-            if cNum == 1 or cNum == 99999:
-                continue
-            try:
-                mag = float(line[33:37])
-            except ValueError:
-                pass
-            try:
-                satellites[ lookup[cNum] ].setStdMag( mag )
-            except KeyError:
-                pass
-        fh.close()
+        with open('qs.mag', 'r') as fh:
+            for line in fh:
+                cNum = int(line[:5], 10)
+                if cNum == 1 or cNum == 99999:
+                    continue
+                try:
+                    mag = float(line[33:37])
+                except ValueError:
+                    pass
+                try:
+                    satellites[ lookup[cNum] ].setStdMag( mag )
+                except KeyError:
+                    pass
     except IOError as e:
-        print("ERROR: Error reading 'qs.mag': %s" % str(e))
+        print(f"ERROR: Error reading 'qs.mag': {str(e)}")
         pass
         
     # Report on what we found
@@ -1140,7 +1130,7 @@ def main(args):
         lx200.setHighPrecision()
         
     except Exception as e:
-        print("ERROR: %s" % str(e))
+        print(f"ERROR: {str(e)}")
         lx200 = None
         lx200StatusString = 'Telescope not connected'
         
@@ -1149,7 +1139,7 @@ def main(args):
     try:
         obs = lx200.getObserver(elevation=config['elev'])
     except Exception as e:
-        print("ERROR: %s" % str(e))
+        print(f"ERROR: {str(e)}")
         obs = ephem.Observer()
         obs.lat = config['lat']*_deg2rad
         obs.lon = config['lon']*_deg2rad
@@ -1175,7 +1165,7 @@ def main(args):
             dt = dt.strftime("%Y/%m/%d %H:%M:%S")
         else:
             ## Use the provided date and time
-            dt = "%s %s" % (d, t)
+            dt = f"{d} {t}"
             
         # Compute the passes - this should return values in local time
         events = passPredictor(obs, satellites, date=d, time=t, utcOffset=config['utcOffset'],
@@ -1293,51 +1283,51 @@ def main(args):
                     ### 'a' to adjust the tracking time offset - negative
                     trkr.adjustTimeOffset( -config['trackOffsetStep'] )
                     off = trkr.getTimeOffset()
-                    msg = 'Time offset now %+.1f s' % (off.days*86400+off.seconds+off.microseconds/1e6)
+                    msg = f"Time offset now {off.total_seconds():+.1f} s"
                 elif c == ord('A'):
                     ### 'A' to adjust the tracking time offset - negative x10
                     trkr.adjustTimeOffset( -10*config['trackOffsetStep'] )
                     off = trkr.getTimeOffset()
-                    msg = 'Time offset now %+.1f s' % (off.days*86400+off.seconds+off.microseconds/1e6)
+                    msg = f"Time offset now {off.total_seconds():+.1f} s"
                 elif c == ord('s'):
                     ### 's' to adjust the tracking time offset - positive
                     trkr.adjustTimeOffset( config['trackOffsetStep'] )
                     off = trkr.getTimeOffset()
-                    msg = 'Time offset now %+.1f s' % (off.days*86400+off.seconds+off.microseconds/1e6)
+                    msg = f"Time offset now {off.total_seconds():+.1f} s"
                 elif c == ord('S'):
                     ### 's' to adjust the tracking time offset - positive x10
                     trkr.adjustTimeOffset( 10*config['trackOffsetStep'] )
                     off = trkr.getTimeOffset()
-                    msg = 'Time offset now %+.1f s' % (off.days*86400+off.seconds+off.microseconds/1e6)
+                    msg = f"Time offset now {off.total_seconds():+.1f} s"
                 elif c == ord('z'):
                     ### 'z' to adjust the perpendicular track offset - negative
                     trkr.adjustCrossTrackOffset( -config['crossTrackOffsetStep'] )
                     off = trkr.getCrossTrackOffset()
-                    msg = 'Cross track offset now %+.1f degrees' % off
+                    msg = f"Cross track offset now {off:+.1f} degrees"
                 elif c == ord('Z'):
                     ### 'Z' to adjust the perpendicular track offset - negative x10
                     trkr.adjustCrossTrackOffset( -10*config['crossTrackOffsetStep'] )
                     off = trkr.getCrossTrackOffset()
-                    msg = 'Cross track offset now %+.1f degrees' % off
+                    msg = f"Cross track offset now {off:+.1f} degrees"
                 elif c == ord('w'):
                     ### 'w' to adjust the perpendicular track offset - positive
                     trkr.adjustCrossTrackOffset( config['crossTrackOffsetStep'] )
                     off = trkr.getCrossTrackOffset()
-                    msg = 'Cross track offset now %+.1f degrees' % off
+                    msg = f"Cross track offset now {off:+.1f} degrees"
                 elif c == ord('W'):
                     ### 'W' to adjust the perpendicular track offset - positive x10
                     trkr.adjustCrossTrackOffset( 10*config['crossTrackOffsetStep'] )
                     off = trkr.getCrossTrackOffset()
-                    msg = 'Cross track offset now %+.1f degrees' % off
+                    msg = f"Cross track offset now {off:+.1f} degrees"
                 elif c == ord('p'):
                     off1 = trkr.getTimeOffset()
                     off2 = trkr.getCrossTrackOffset()
-                    msg = 'Time offset is %+.1f s; Cross track offset is %+.1f degrees' % (off1.days*86400+off1.seconds+off1.microseconds/1e6, off2)
+                    msg = f"Time offset is {off1.total_seconds():+.1f} s; Cross track offset is {off2:+.1f} degrees"
                 elif c == ord('k'):
                     ### 'k' to adjust the magnitude limit - negative
                     magLimit -= 0.5
                     magLimit = max([magLimit, -2.0])
-                    msg = 'Magntiude limit now <= %.1f mag' % magLimit
+                    msg = f"Magntiude limit now <= {magLimit:.1f} mag"
                 elif c == ord('l'):
                     ### 'k' to adjust the magnitude limit - negative
                     magLimit += 0.5
@@ -1345,7 +1335,7 @@ def main(args):
                     if magLimit == 15.0:
                         msg = 'Magntiude limit now disabled'
                     else:
-                        msg = 'Magntiude limit now <= %.1f mag' % magLimit
+                        msg = f"Magntiude limit now <= {magLimit:.1f} mag"
                 elif c == ord('r'):
                     ### 'r' to reset the telescope target
                     trkr.resetTracking()
@@ -1398,7 +1388,7 @@ def main(args):
                                     trkr.setTimeOffset( timedelta() )
                                     trkr.setCrossTrackOffset( 0.0 )
                                     trkr.startTracking(sat.catalog_number)
-                                    msg = 'Now tracking \'%s\' (NORAD ID #%i)' % (sat.name, sat.catalog_number)
+                                    msg = f"Now tracking '{sat.name}' (NORAD ID #{sat.catalog_number})"
                                 
                         #### See if we need to poll and print info
                         if k == info:
@@ -1489,9 +1479,9 @@ def main(args):
         except KeyboardInterrupt:
             pass
             
-        except Exception as error:
+        except Exception as terror:
             exc_type, exc_value, exc_traceback = sys.exc_info()
-            fileObject = StringIO.StringIO()
+            fileObject = StringIO()
             traceback.print_tb(exc_traceback, file=fileObject)
             tbString = fileObject.getvalue()
             fileObject.close()
@@ -1505,7 +1495,7 @@ def main(args):
         # Final reporting
         try:
             ## Error
-            print("%s: failed with %s at line %i" % (os.path.basename(__file__), str(error), traceback.tb_lineno(exc_traceback)))
+            print("%s: failed with %s at line %i" % (os.path.basename(__file__), str(terror), traceback.tb_lineno(exc_traceback)))
             for line in tbString.split('\n'):
                 print(line)
         except NameError:
@@ -1514,4 +1504,3 @@ def main(args):
 
 if __name__ == "__main__":
     main(sys.argv[1:])
-    
