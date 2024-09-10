@@ -199,7 +199,7 @@ class LX200(object):
         self.port.flushOutput()
         
         # Make sure there is a telescope on the other end
-        self.port.write(b'\x06')
+        self._write('\x06')
         status = self.port.read(1)
         if status not in (b'L', b'A', b'P'):
             raise RuntimeError(f"Error communicating with the LX200 on '{self.device}'")
@@ -264,7 +264,7 @@ class LX200(object):
         
         command = command.encode('ascii')
         command = command.replace(b':::', b'\xdf')
-        self.serial.write(command)
+        self.port.write(command)
         
     def _readNumber(self):
         """
