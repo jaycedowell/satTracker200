@@ -1284,50 +1284,50 @@ def main(args):
                     if lx200 is not None:
                         lx200.haltCurrentSlew()
                     break
-                elif c == curses.KEY_UP or g == 'X':
+                elif c == curses.KEY_UP or 'X' in g:
                     ### Up arrow to change what is selected
                     act -= 1
                     act = max([act, 0])
-                elif c == curses.KEY_DOWN or g == 'B':
+                elif c == curses.KEY_DOWN or 'B' in g:
                     ### Down array to change what is selected
                     act += 1
                     act = min([act, nVis-1, 12])
-                elif c == ord('a') or g == 'left':
+                elif c == ord('a') or ('left' in g and 'A' not in g):
                     ### 'a' to adjust the tracking time offset - negative
                     trkr.adjustTimeOffset( -config['trackOffsetStep'] )
                     off = trkr.getTimeOffset()
                     msg = f"Time offset now {off.total_seconds():+.1f} s"
-                elif c == ord('A'):
+                elif c == ord('A') or ('left' in g and 'A' in g):
                     ### 'A' to adjust the tracking time offset - negative x10
                     trkr.adjustTimeOffset( -10*config['trackOffsetStep'] )
                     off = trkr.getTimeOffset()
                     msg = f"Time offset now {off.total_seconds():+.1f} s"
-                elif c == ord('s') or g == 'right':
+                elif c == ord('s') or ('right' in g and 'A' not in g):
                     ### 's' to adjust the tracking time offset - positive
                     trkr.adjustTimeOffset( config['trackOffsetStep'] )
                     off = trkr.getTimeOffset()
                     msg = f"Time offset now {off.total_seconds():+.1f} s"
-                elif c == ord('S'):
+                elif c == ord('S') or ('right' in g and 'A' in g):
                     ### 's' to adjust the tracking time offset - positive x10
                     trkr.adjustTimeOffset( 10*config['trackOffsetStep'] )
                     off = trkr.getTimeOffset()
                     msg = f"Time offset now {off.total_seconds():+.1f} s"
-                elif c == ord('z') or g == 'down':
+                elif c == ord('z') or ('down' in g and 'A' not in g):
                     ### 'z' to adjust the perpendicular track offset - negative
                     trkr.adjustCrossTrackOffset( -config['crossTrackOffsetStep'] )
                     off = trkr.getCrossTrackOffset()
                     msg = f"Cross track offset now {off:+.1f} degrees"
-                elif c == ord('Z'):
+                elif c == ord('Z') or ('down' in g and 'A' in g):
                     ### 'Z' to adjust the perpendicular track offset - negative x10
                     trkr.adjustCrossTrackOffset( -10*config['crossTrackOffsetStep'] )
                     off = trkr.getCrossTrackOffset()
                     msg = f"Cross track offset now {off:+.1f} degrees"
-                elif c == ord('w') or g == 'up':
+                elif c == ord('w') or ('up' in g and 'A' not in g):
                     ### 'w' to adjust the perpendicular track offset - positive
                     trkr.adjustCrossTrackOffset( config['crossTrackOffsetStep'] )
                     off = trkr.getCrossTrackOffset()
                     msg = f"Cross track offset now {off:+.1f} degrees"
-                elif c == ord('W'):
+                elif c == ord('W') or ('up' in g and 'A' in g):
                     ### 'W' to adjust the perpendicular track offset - positive x10
                     trkr.adjustCrossTrackOffset( 10*config['crossTrackOffsetStep'] )
                     off = trkr.getCrossTrackOffset()
@@ -1336,12 +1336,12 @@ def main(args):
                     off1 = trkr.getTimeOffset()
                     off2 = trkr.getCrossTrackOffset()
                     msg = f"Time offset is {off1.total_seconds():+.1f} s; Cross track offset is {off2:+.1f} degrees"
-                elif c == ord('k') or g == 'L':
+                elif c == ord('k') or 'L' in g:
                     ### 'k' to adjust the magnitude limit - negative
                     magLimit -= 0.5
                     magLimit = max([magLimit, -2.0])
                     msg = f"Magntiude limit now <= {magLimit:.1f} mag"
-                elif c == ord('l') or g == 'R':
+                elif c == ord('l') or 'R' in g:
                     ### 'k' to adjust the magnitude limit - negative
                     magLimit += 0.5
                     magLimit = min([magLimit, 15.0])
@@ -1349,11 +1349,11 @@ def main(args):
                         msg = 'Magntiude limit now disabled'
                     else:
                         msg = f"Magntiude limit now <= {magLimit:.1f} mag"
-                elif c == ord('r') or g == 'clear':
+                elif c == ord('r') or 'clear' in g:
                     ### 'r' to reset the telescope target
                     trkr.resetTracking()
                     msg = 'Resetting telescope target'
-                elif c == ord('t') or g == 'start':
+                elif c == ord('t') or 'start' in g:
                     ### 't' to toggle telesope tracking on/off
                     if trk == -1:
                         trk = act

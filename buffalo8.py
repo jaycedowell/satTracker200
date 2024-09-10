@@ -35,7 +35,7 @@ def read():
     global _LAST_STATUS
     global _LAST_PRESS
     
-    output = ''
+    output = []
     
     if _GAMEPAD is not None:
         # If we have something to read from, try reading from it
@@ -50,10 +50,10 @@ def read():
                     
             if refresh:
                 if status[0] == 0:
-                    output = 'left'
+                    output.append('left')
                     _LAST_PRESS[0] = time.time()
                 elif status[0] == 255:
-                    output = 'right'
+                    output.append('right')
                     _LAST_PRESS[0] = time.time()
                     
             ## Two-axis arrow keys - up/down
@@ -64,10 +64,10 @@ def read():
                     
             if refresh:
                 if status[1] == 0:
-                    output = 'up'
+                    output.append('up')
                     _LAST_PRESS[1] = time.time()
                 elif status[1] == 255:
-                    output = 'down'
+                    output.append('down')
                     _LAST_PRESS[1] = time.time()
                     
             ## Buttons - A/B/X/Y, L/R, and start/select
@@ -78,28 +78,28 @@ def read():
                     
             if refresh:
                 if status[2] & 1:
-                    output = 'A'
+                    output.append('A')
                     _LAST_PRESS[2] = time.time()
                 if status[2] & 2:
-                    output = 'B'
+                    output.append('B')
                     _LAST_PRESS[2] = time.time()
                 if status[2] & 4:
-                    output = 'X'
+                    output.append('X')
                     _LAST_PRESS[2] = time.time()
                 if status[2] & 8:
-                    output = 'Y'
+                    output.append('Y')
                     _LAST_PRESS[2] = time.time()
                 if status[2] & 16:
-                    output = 'L'
+                    output.append('L')
                     _LAST_PRESS[2] = time.time()
                 if status[2] & 32:
-                    output = 'R'
+                    output.append('R')
                     _LAST_PRESS[2] = time.time()
                 if status[2] & 64:
-                    output = 'select'
+                    output.append('select')
                     _LAST_PRESS[2] = time.time()
                 if status[2] & 128:
-                    output = 'start'
+                    output.append('start')
                     _LAST_PRESS[2] = time.time()
                     
             ## "Extra" buttons - turbo/clear
@@ -110,10 +110,10 @@ def read():
                     
             if refresh:
                 if status[3] & 16:
-                    output = 'turbo'
+                    output.append('turbo')
                     _LAST_PRESS[3] = time.time()
                 if status[3] & 32:
-                    output = 'clear'
+                    output.append('clear')
                     _LAST_PRESS[3] = time.time()
                     
             _LAST_STATUS = status
