@@ -19,6 +19,8 @@ except ImportError as e:
     warnings.warn("Cannot import the 'hid' module, gamepad support disabled")
     
 except OSError as e:
+    _GAMEPAD = None
+    
     warnings.warn("Cannot find a supported device, gamepad support disabled")
     
     
